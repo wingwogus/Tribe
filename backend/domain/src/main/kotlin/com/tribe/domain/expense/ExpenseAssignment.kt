@@ -1,6 +1,6 @@
 package com.tribe.domain.expense
 
-import com.tribe.domain.trip.TripMember
+import com.tribe.domain.trip.member.TripMember
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType

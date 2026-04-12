@@ -4,14 +4,14 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.security.CurrentActor
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
-import com.tribe.domain.itinerary.Category
-import com.tribe.domain.itinerary.CategoryRepository
+import com.tribe.domain.itinerary.category.Category
+import com.tribe.domain.itinerary.category.CategoryRepository
 import com.tribe.domain.member.Member
-import com.tribe.domain.trip.Country
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -35,7 +35,7 @@ import java.util.Optional
 class CategoryServiceTest {
     @Mock private lateinit var categoryRepository: CategoryRepository
     @Mock private lateinit var tripRepository: TripRepository
-    @Mock private lateinit var tripMemberRepository: com.tribe.domain.trip.TripMemberRepository
+    @Mock private lateinit var tripMemberRepository: com.tribe.domain.trip.member.TripMemberRepository
     @Mock private lateinit var currentActor: CurrentActor
     @Mock private lateinit var tripRealtimeEventPublisher: TripRealtimeEventPublisher
 
@@ -48,7 +48,7 @@ class CategoryServiceTest {
             tripRepository = tripRepository,
             currentActor = currentActor,
             tripRealtimeEventPublisher = tripRealtimeEventPublisher,
-            tripAuthorizationPolicy = com.tribe.application.trip.TripAuthorizationPolicy(tripMemberRepository, currentActor),
+            tripAuthorizationPolicy = com.tribe.application.trip.core.TripAuthorizationPolicy(tripMemberRepository, currentActor),
         )
     }
 

@@ -2,15 +2,15 @@ package com.tribe.application.chat
 
 import com.tribe.application.chat.event.ChatEventPublisher
 import com.tribe.application.security.CurrentActor
-import com.tribe.application.trip.TripAuthorizationPolicy
+import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.chat.ChatMessage
 import com.tribe.domain.chat.ChatMessageRepository
 import com.tribe.domain.member.Member
-import com.tribe.domain.trip.Country
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk

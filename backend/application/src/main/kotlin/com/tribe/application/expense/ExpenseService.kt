@@ -10,11 +10,11 @@ import com.tribe.domain.expense.ExpenseItemRepository
 import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
 import com.tribe.domain.expense.InputMethod
-import com.tribe.domain.itinerary.ItineraryItem
-import com.tribe.domain.itinerary.ItineraryItemRepository
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.member.TripRole
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal

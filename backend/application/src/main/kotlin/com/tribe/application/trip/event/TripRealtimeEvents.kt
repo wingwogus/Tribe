@@ -3,7 +3,7 @@ package com.tribe.application.trip.event
 import com.tribe.application.itinerary.category.CategoryResult
 import com.tribe.application.itinerary.item.ItemResult
 import com.tribe.application.itinerary.wishlist.WishlistResult
-import com.tribe.application.trip.TripResult
+import com.tribe.application.trip.core.TripResult
 import java.time.LocalDate
 
 enum class TripRealtimeEventType {

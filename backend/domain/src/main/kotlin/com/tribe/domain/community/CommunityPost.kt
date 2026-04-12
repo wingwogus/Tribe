@@ -1,7 +1,7 @@
 package com.tribe.domain.community
 
 import com.tribe.domain.member.Member
-import com.tribe.domain.trip.Trip
+import com.tribe.domain.trip.core.Trip
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType

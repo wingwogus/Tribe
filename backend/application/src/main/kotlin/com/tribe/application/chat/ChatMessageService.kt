@@ -5,10 +5,10 @@ import com.tribe.application.common.cursor.CursorCodec
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.security.CurrentActor
-import com.tribe.application.trip.TripAuthorizationPolicy
+import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.chat.ChatMessage
 import com.tribe.domain.chat.ChatMessageRepository
-import com.tribe.domain.trip.TripRepository
+import com.tribe.domain.trip.core.TripRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

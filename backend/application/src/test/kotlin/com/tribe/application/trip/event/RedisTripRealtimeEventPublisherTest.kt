@@ -1,7 +1,7 @@
 package com.tribe.application.trip.event
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.tribe.application.trip.TripResult
+import com.tribe.application.trip.core.TripResult
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

@@ -2,13 +2,13 @@ package com.tribe.application.expense
 
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
-import com.tribe.application.trip.TripAuthorizationPolicy
+import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.exchange.Currency
 import com.tribe.domain.exchange.CurrencyRepository
 import com.tribe.domain.expense.Expense
 import com.tribe.domain.expense.ExpenseRepository
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

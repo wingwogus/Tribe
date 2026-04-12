@@ -10,12 +10,12 @@ import com.tribe.application.trip.event.ItineraryEvent
 import com.tribe.application.trip.event.TripRealtimeEvent
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.event.TripRealtimeEventType
-import com.tribe.application.trip.TripAuthorizationPolicy
-import com.tribe.domain.itinerary.Category
-import com.tribe.domain.itinerary.CategoryRepository
-import com.tribe.domain.itinerary.ItineraryItem
-import com.tribe.domain.itinerary.ItineraryItemRepository
-import com.tribe.domain.itinerary.PlaceRepository
+import com.tribe.application.trip.core.TripAuthorizationPolicy
+import com.tribe.domain.itinerary.category.Category
+import com.tribe.domain.itinerary.category.CategoryRepository
+import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
+import com.tribe.domain.itinerary.place.PlaceRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

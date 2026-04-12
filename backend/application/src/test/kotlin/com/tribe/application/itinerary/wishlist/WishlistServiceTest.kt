@@ -4,18 +4,18 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.security.CurrentActor
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
-import com.tribe.domain.itinerary.Place
-import com.tribe.domain.itinerary.PlaceRepository
-import com.tribe.domain.itinerary.WishlistItem
-import com.tribe.domain.itinerary.WishlistItemRepository
+import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.place.PlaceRepository
+import com.tribe.domain.itinerary.wishlist.WishlistItem
+import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
-import com.tribe.domain.trip.Country
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripMemberRepository
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.member.TripMemberRepository
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -40,7 +40,7 @@ class WishlistServiceTest {
     @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var memberRepository: MemberRepository
     @Mock private lateinit var currentActor: CurrentActor
-    @Mock private lateinit var tripAuthorizationPolicy: com.tribe.application.trip.TripAuthorizationPolicy
+    @Mock private lateinit var tripAuthorizationPolicy: com.tribe.application.trip.core.TripAuthorizationPolicy
     @Mock private lateinit var tripRealtimeEventPublisher: TripRealtimeEventPublisher
 
     private lateinit var service: WishlistService

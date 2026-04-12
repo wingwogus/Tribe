@@ -1,9 +1,9 @@
 package com.tribe.domain.expense
 
 import com.tribe.domain.member.Member
-import com.tribe.domain.itinerary.ItineraryItem
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
+import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity

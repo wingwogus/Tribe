@@ -6,9 +6,9 @@ import com.tribe.domain.community.CommunityPost
 import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.community.PostSearchCondition
 import com.tribe.domain.member.MemberRepository
-import com.tribe.domain.trip.TripRepository
+import com.tribe.domain.trip.core.TripRepository
 import com.tribe.application.security.CurrentActor
-import com.tribe.application.trip.TripAuthorizationPolicy
+import com.tribe.application.trip.core.TripAuthorizationPolicy
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service

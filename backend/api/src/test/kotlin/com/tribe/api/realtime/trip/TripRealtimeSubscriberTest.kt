@@ -1,7 +1,7 @@
 package com.tribe.api.realtime.trip
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.tribe.application.trip.TripResult
+import com.tribe.application.trip.core.TripResult
 import com.tribe.application.trip.event.TripMemberAction
 import com.tribe.application.trip.event.TripMemberEvent
 import com.tribe.application.trip.event.TripRealtimeEvent

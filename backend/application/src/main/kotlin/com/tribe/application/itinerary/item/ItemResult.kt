@@ -1,6 +1,6 @@
 package com.tribe.application.itinerary.item
 
-import com.tribe.domain.itinerary.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItem
 import java.time.LocalDateTime
 
 object ItemResult {

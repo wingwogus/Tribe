@@ -4,9 +4,9 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.security.CurrentActor
 import com.tribe.domain.expense.Expense
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import org.springframework.stereotype.Component
 
 @Component

@@ -9,15 +9,15 @@ import com.tribe.domain.expense.ExpenseCategory
 import com.tribe.domain.expense.ExpenseItem
 import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
-import com.tribe.domain.itinerary.Category
-import com.tribe.domain.itinerary.ItineraryItem
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.itinerary.category.Category
+import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import com.tribe.domain.member.Member
 import com.tribe.domain.expense.ExpenseItemRepository
-import com.tribe.domain.itinerary.ItineraryItemRepository
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -235,7 +235,7 @@ class ExpenseServiceTest {
             title = "Tokyo",
             startDate = LocalDate.of(2026, 4, 10),
             endDate = LocalDate.of(2026, 4, 14),
-            country = com.tribe.domain.trip.Country.JAPAN,
+            country = com.tribe.domain.trip.core.Country.JAPAN,
         )
         ReflectionTestUtils.setField(trip, "id", 10L)
 

@@ -1,7 +1,7 @@
 package com.tribe.domain.chat
 
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType

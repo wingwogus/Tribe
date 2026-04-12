@@ -8,11 +8,11 @@ import com.tribe.domain.expense.ExpenseCategory
 import com.tribe.domain.expense.ExpenseItem
 import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
-import com.tribe.domain.trip.Country
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMember
-import com.tribe.domain.trip.TripRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMember
+import com.tribe.domain.trip.core.TripRepository
+import com.tribe.domain.trip.member.TripRole
 import com.tribe.domain.member.Member
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -31,7 +31,7 @@ class SettlementServiceTest {
     @Mock private lateinit var expenseRepository: ExpenseRepository
     @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var currencyRepository: CurrencyRepository
-    @Mock private lateinit var tripAuthorizationPolicy: com.tribe.application.trip.TripAuthorizationPolicy
+    @Mock private lateinit var tripAuthorizationPolicy: com.tribe.application.trip.core.TripAuthorizationPolicy
 
     private lateinit var settlementService: SettlementService
 

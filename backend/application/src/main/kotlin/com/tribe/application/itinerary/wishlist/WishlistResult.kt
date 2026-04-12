@@ -1,6 +1,6 @@
 package com.tribe.application.itinerary.wishlist
 
-import com.tribe.domain.itinerary.WishlistItem
+import com.tribe.domain.itinerary.wishlist.WishlistItem
 import java.math.BigDecimal
 
 object WishlistResult {

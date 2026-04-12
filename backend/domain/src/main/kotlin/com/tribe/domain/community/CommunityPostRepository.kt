@@ -1,6 +1,6 @@
 package com.tribe.domain.community
 
-import com.tribe.domain.trip.Country
+import com.tribe.domain.trip.core.Country
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository

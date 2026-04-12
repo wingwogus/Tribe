@@ -1,6 +1,6 @@
 package com.tribe.application.itinerary.category
 
-import com.tribe.domain.itinerary.Category
+import com.tribe.domain.itinerary.category.Category
 import java.time.LocalDateTime
 
 object CategoryResult {

@@ -7,17 +7,17 @@ import com.tribe.application.itinerary.place.PlaceSearchService
 import com.tribe.application.itinerary.place.RouteDetails
 import com.tribe.application.security.CurrentActor
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
-import com.tribe.domain.itinerary.Category
-import com.tribe.domain.itinerary.CategoryRepository
-import com.tribe.domain.itinerary.ItineraryItem
-import com.tribe.domain.itinerary.ItineraryItemRepository
-import com.tribe.domain.itinerary.Place
-import com.tribe.domain.itinerary.PlaceRepository
+import com.tribe.domain.itinerary.category.Category
+import com.tribe.domain.itinerary.category.CategoryRepository
+import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
+import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.place.PlaceRepository
 import com.tribe.domain.member.Member
-import com.tribe.domain.trip.Country
-import com.tribe.domain.trip.Trip
-import com.tribe.domain.trip.TripMemberRepository
-import com.tribe.domain.trip.TripRole
+import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripMemberRepository
+import com.tribe.domain.trip.member.TripRole
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -55,7 +55,7 @@ class ItemServiceTest {
             placeSearchService = placeSearchService,
             currentActor = currentActor,
             tripRealtimeEventPublisher = tripRealtimeEventPublisher,
-            tripAuthorizationPolicy = com.tribe.application.trip.TripAuthorizationPolicy(tripMemberRepository, currentActor),
+            tripAuthorizationPolicy = com.tribe.application.trip.core.TripAuthorizationPolicy(tripMemberRepository, currentActor),
         )
     }
 
@@ -214,7 +214,7 @@ class ItemServiceTest {
         )
         ReflectionTestUtils.setField(trip, "id", 1L)
         val member = Member(id = 2L, email = "member@example.com", passwordHash = "hashed", nickname = "member")
-        val tripMember = com.tribe.domain.trip.TripMember(member = member, trip = trip, role = TripRole.MEMBER)
+        val tripMember = com.tribe.domain.trip.member.TripMember(member = member, trip = trip, role = TripRole.MEMBER)
         ReflectionTestUtils.setField(tripMember, "id", 3L)
         val category = Category(trip, 1, "Meals", 1)
         ReflectionTestUtils.setField(category, "id", 11L)
@@ -224,7 +224,7 @@ class ItemServiceTest {
     private data class Fixture(
         val trip: Trip,
         val member: Member,
-        val tripMember: com.tribe.domain.trip.TripMember,
+        val tripMember: com.tribe.domain.trip.member.TripMember,
         val category: Category,
     )
 }
