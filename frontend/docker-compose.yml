@@ -1,0 +1,13 @@
+services:
+  tribe-frontend:
+    build: .
+    container_name: tribe-frontend
+    expose:
+      - "3003"
+    networks:
+      - npm-net
+    restart: unless-stopped
+
+networks:
+  npm-net:
+    external: true

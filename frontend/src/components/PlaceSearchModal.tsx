@@ -1,0 +1,132 @@
+import {useEffect, useState} from "react";
+import {Loader2, Plus, Search} from "lucide-react";
+import {Dialog, DialogContent, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
+import {Input} from "@/components/ui/input";
+import {Button} from "@/components/ui/button";
+import {placesApi, PlaceSearchResult} from "@/api/places";
+import {useToast} from "@/hooks/use-toast";
+
+interface PlaceSearchModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAddPlace: (place: PlaceSearchResult) => void;
+  region?: string;
+}
+
+export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, region }: PlaceSearchModalProps) => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [places, setPlaces] = useState<PlaceSearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        searchPlaces();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setPlaces([]);
+    }
+  }, [searchQuery]);
+
+  const searchPlaces = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setIsLoading(true);
+    try {
+      const results = await placesApi.searchPlaces(searchQuery, region);
+      setPlaces(results);
+    } catch (error) {
+      toast({
+        title: "검색 실패",
+        description: "장소 검색 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddPlace = (place: PlaceSearchResult) => {
+    onAddPlace(place);
+    setSearchQuery("");
+    setPlaces([]);
+    onClose();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <Search className="w-5 h-5 mr-2 text-primary" />
+            장소 검색
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="장소명이나 카테고리를 검색하세요..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* Search Results */}
+          <div className="flex-1 overflow-auto space-y-3">
+            {isLoading && (
+              <div className="text-center text-muted-foreground py-8">
+                <Loader2 className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
+                <p>검색 중...</p>
+              </div>
+            )}
+
+            {!isLoading && places.map((place) => (
+              <div
+                key={place.externalPlaceId}
+                className="p-4 bg-gradient-subtle rounded-lg border hover:shadow-soft transition-all duration-200"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h5 className="font-medium text-foreground mb-2">{place.placeName}</h5>
+                    <div className="text-sm text-muted-foreground">
+                      <p>{place.address}</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => handleAddPlace(place)}
+                    className="bg-gradient-primary"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    추가
+                  </Button>
+                </div>
+              </div>
+            ))}
+            
+            {!isLoading && searchQuery && places.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>검색 결과가 없습니다</p>
+                <p className="text-sm">다른 키워드로 검색해보세요</p>
+              </div>
+            )}
+
+            {!isLoading && !searchQuery && (
+              <div className="text-center text-muted-foreground py-8">
+                <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>장소를 검색해보세요</p>
+                <p className="text-sm">장소명이나 주소를 입력하세요</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
