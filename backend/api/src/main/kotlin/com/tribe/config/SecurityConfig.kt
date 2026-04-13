@@ -36,6 +36,9 @@ class SecurityConfig(
         private val PUBLIC_ENDPOINTS = listOf(
             "/swagger-ui/**",
             "/v3/api-docs/**",
+            "/actuator/health",
+            "/actuator/health/**",
+            "/actuator/prometheus",
             "/api/v1/auth/email/send-code",
             "/api/v1/auth/email/verify-code",
             "/api/v1/auth/signup",
