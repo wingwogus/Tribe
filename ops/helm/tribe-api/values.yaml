@@ -48,7 +48,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
   hosts:
-    - host: api.tribe.jaehyuns.com
+    - host: api.jaehyuns.com
       paths:
         - path: /
           pathType: Prefix

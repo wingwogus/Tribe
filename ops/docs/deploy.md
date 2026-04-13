@@ -4,7 +4,7 @@ This monorepo uses an app-and-ops split inside one repository.
 
 Current target topology:
 - `frontend/` -> Vercel (`https://tribe.jaehyuns.com`)
-- `backend/` -> Kubernetes via `ops/helm/tribe-api` (`https://api.tribe.jaehyuns.com`)
+- `backend/` -> Kubernetes via `ops/helm/tribe-api` (`https://api.jaehyuns.com`)
 
 Required backend prerequisites before production rollout:
 - add a backend `Dockerfile`
@@ -13,7 +13,7 @@ Required backend prerequisites before production rollout:
 - configure forwarded headers for reverse proxy operation
 
 Recommended ingress behavior:
-- host: `api.tribe.jaehyuns.com`
+- host: `api.jaehyuns.com`
 - sticky session enabled for `/ws`
 - extended read/send timeouts for websocket traffic
 
