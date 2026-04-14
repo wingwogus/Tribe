@@ -1,44 +1,13 @@
 import {type ClassValue, clsx} from "clsx"
 import {twMerge} from "tailwind-merge"
+import { getCountryEmojiByValue } from "@/lib/tripRegions";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 export function getCountryEmoji(country: string): string {
-  const emojiMap: Record<string, string> = {
-    '대한민국': '🇰🇷',
-    '일본': '🇯🇵',
-    '중국': '🇨🇳',
-    '태국': '🇹🇭',
-    '베트남': '🇻🇳',
-    '필리핀': '🇵🇭',
-    '싱가포르': '🇸🇬',
-    '말레이시아': '🇲🇾',
-    '인도네시아': '🇮🇩',
-    '인도': '🇮🇳',
-    '아랍에미리트': '🇦🇪',
-    '터키': '🇹🇷',
-    '이집트': '🇪🇬',
-    '이탈리아': '🇮🇹',
-    '프랑스': '🇫🇷',
-    '스페인': '🇪🇸',
-    '영국': '🇬🇧',
-    '독일': '🇩🇪',
-    '스위스': '🇨🇭',
-    '네덜란드': '🇳🇱',
-    '그리스': '🇬🇷',
-    '미국': '🇺🇸',
-    '캐나다': '🇨🇦',
-    '호주': '🇦🇺',
-    '뉴질랜드': '🇳🇿',
-    '브라질': '🇧🇷',
-    '아르헨티나': '🇦🇷',
-    '멕시코': '🇲🇽',
-    '남아프리카 공화국': '🇿🇦',
-    '모로코': '🇲🇦',
-  };
-  return emojiMap[country] || '✈️';
+  return getCountryEmojiByValue(country);
 }
 
 export function getCountryTimezone(country: string): string {

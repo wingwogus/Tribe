@@ -8,6 +8,7 @@ object TripCommand {
         val startDate: LocalDate,
         val endDate: LocalDate,
         val country: String,
+        val regionCode: String? = null,
     )
 
     data class Update(
@@ -16,6 +17,7 @@ object TripCommand {
         val startDate: LocalDate,
         val endDate: LocalDate,
         val country: String,
+        val regionCode: String? = null,
     )
 
     data class Join(

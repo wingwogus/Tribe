@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Country, CreateTripRequest } from "@/api/trips";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle } from "lucide-react";
+import { getCountryOptionByCode, getTripRegionsByCountryCode, TRIP_COUNTRY_OPTIONS } from "@/lib/tripRegions";
 
 interface TripCreationModalProps {
   isOpen: boolean;
@@ -14,45 +14,20 @@ interface TripCreationModalProps {
   onCreateTrip: (tripData: CreateTripRequest) => void;
 }
 
-const countries = [
-  { code: Country.SOUTH_KOREA, name: '대한민국', displayName: 'SOUTH_KOREA' },
-  { code: Country.JAPAN, name: '일본', displayName: 'JAPAN' },
-  { code: Country.CHINA, name: '중국', displayName: 'CHINA' },
-  { code: Country.THAILAND, name: '태국', displayName: 'THAILAND' },
-  { code: Country.VIETNAM, name: '베트남', displayName: 'VIETNAM' },
-  { code: Country.PHILIPPINES, name: '필리핀', displayName: 'PHILIPPINES' },
-  { code: Country.SINGAPORE, name: '싱가포르', displayName: 'SINGAPORE' },
-  { code: Country.MALAYSIA, name: '말레이시아', displayName: 'MALAYSIA' },
-  { code: Country.INDONESIA, name: '인도네시아', displayName: 'INDONESIA' },
-  { code: Country.INDIA, name: '인도', displayName: 'INDIA' },
-  { code: Country.UAE, name: '아랍에미리트', displayName: 'UAE' },
-  { code: Country.TURKEY, name: '터키', displayName: 'TURKEY' },
-  { code: Country.EGYPT, name: '이집트', displayName: 'EGYPT' },
-  { code: Country.ITALY, name: '이탈리아', displayName: 'ITALY' },
-  { code: Country.FRANCE, name: '프랑스', displayName: 'FRANCE' },
-  { code: Country.SPAIN, name: '스페인', displayName: 'SPAIN' },
-  { code: Country.UK, name: '영국', displayName: 'UK' },
-  { code: Country.GERMANY, name: '독일', displayName: 'GERMANY' },
-  { code: Country.SWITZERLAND, name: '스위스', displayName: 'SWITZERLAND' },
-  { code: Country.NETHERLANDS, name: '네덜란드', displayName: 'NETHERLANDS' },
-  { code: Country.GREECE, name: '그리스', displayName: 'GREECE' },
-  { code: Country.USA, name: '미국', displayName: 'USA' },
-  { code: Country.CANADA, name: '캐나다', displayName: 'CANADA' },
-  { code: Country.AUSTRALIA, name: '호주', displayName: 'AUSTRALIA' },
-  { code: Country.NEW_ZEALAND, name: '뉴질랜드', displayName: 'NEW_ZEALAND' },
-  { code: Country.BRAZIL, name: '브라질', displayName: 'BRAZIL' },
-  { code: Country.ARGENTINA, name: '아르헨티나', displayName: 'ARGENTINA' },
-  { code: Country.MEXICO, name: '멕시코', displayName: 'MEXICO' },
-  { code: Country.SOUTH_AFRICA, name: '남아프리카 공화국', displayName: 'SOUTH_AFRICA' },
-  { code: Country.MOROCCO, name: '모로코', displayName: 'MOROCCO' }
-];
-
 export const TripCreationModal = ({ isOpen, onClose, onCreateTrip }: TripCreationModalProps) => {
   const { toast } = useToast();
   const [tripName, setTripName] = useState("");
   const [selectedCountry, setSelectedCountry] = useState<Country | "">("");
+  const [selectedRegionCode, setSelectedRegionCode] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const selectedCountryOption = getCountryOptionByCode(selectedCountry);
+  const availableRegions = getTripRegionsByCountryCode(selectedCountryOption?.code2);
+
+  const handleCountryChange = (value: string) => {
+    setSelectedCountry(value as Country);
+    setSelectedRegionCode("");
+  };
 
   const handleCreate = () => {
     // 여행 이름 검증
@@ -120,6 +95,7 @@ export const TripCreationModal = ({ isOpen, onClose, onCreateTrip }: TripCreatio
     const tripData: CreateTripRequest = {
       title: tripName.trim(),
       country: selectedCountry as Country,
+      regionCode: selectedRegionCode || null,
       startDate,
       endDate
     };
@@ -129,6 +105,7 @@ export const TripCreationModal = ({ isOpen, onClose, onCreateTrip }: TripCreatio
     // Reset form
     setTripName("");
     setSelectedCountry("");
+    setSelectedRegionCode("");
     setStartDate("");
     setEndDate("");
     onClose();
@@ -154,12 +131,12 @@ export const TripCreationModal = ({ isOpen, onClose, onCreateTrip }: TripCreatio
 
           <div className="space-y-2">
             <Label htmlFor="country">여행 국가</Label>
-            <Select value={selectedCountry} onValueChange={(value) => setSelectedCountry(value as Country)}>
+            <Select value={selectedCountry} onValueChange={handleCountryChange}>
               <SelectTrigger>
                 <SelectValue placeholder="국가를 선택하세요" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50 max-h-[300px]">
-                {countries.map((country) => (
+                {TRIP_COUNTRY_OPTIONS.map((country) => (
                   <SelectItem key={country.code} value={country.code}>
                     {country.name} ({country.displayName})
                   </SelectItem>
@@ -167,6 +144,24 @@ export const TripCreationModal = ({ isOpen, onClose, onCreateTrip }: TripCreatio
               </SelectContent>
             </Select>
           </div>
+
+          {availableRegions.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="regionCode">여행 권역</Label>
+              <Select value={selectedRegionCode} onValueChange={setSelectedRegionCode}>
+                <SelectTrigger>
+                  <SelectValue placeholder="권역을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50 max-h-[260px]">
+                  {availableRegions.map((region) => (
+                    <SelectItem key={region.code} value={region.code}>
+                      {region.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

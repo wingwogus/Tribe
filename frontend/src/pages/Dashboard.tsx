@@ -16,6 +16,7 @@ import {tripApi, TripDetail, UpdateTripRequest} from "@/api/trips";
 import {useToast} from "@/hooks/use-toast";
 import {Button} from "@/components/ui/button";
 import {getCountryEmoji} from "@/lib/utils";
+import {formatTripDestination} from "@/lib/tripRegions";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -254,7 +255,7 @@ const Dashboard = () => {
                       </h3>
                       <div className="flex items-center text-muted-foreground text-sm mt-1">
                         <MapPin className="w-4 h-4 mr-1" />
-                        {trip.country}
+                        {formatTripDestination(trip.country, trip.regionCode)}
                       </div>
                     </div>
 

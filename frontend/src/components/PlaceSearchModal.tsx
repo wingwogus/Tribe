@@ -1,41 +1,33 @@
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Loader2, Plus, Search} from "lucide-react";
 import {Dialog, DialogContent, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {placesApi, PlaceSearchResult} from "@/api/places";
 import {useToast} from "@/hooks/use-toast";
+import {buildPlaceSearchQuery, getTripRegionLabel} from "@/lib/tripRegions";
 
 interface PlaceSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddPlace: (place: PlaceSearchResult) => void;
-  region?: string;
+  countryCode?: string;
+  regionCode?: string | null;
 }
 
-export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, region }: PlaceSearchModalProps) => {
+export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, regionCode }: PlaceSearchModalProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [places, setPlaces] = useState<PlaceSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const regionLabel = getTripRegionLabel(regionCode);
 
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const timer = setTimeout(() => {
-        searchPlaces();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setPlaces([]);
-    }
-  }, [searchQuery]);
-
-  const searchPlaces = async () => {
+  const searchPlaces = useCallback(async () => {
     if (!searchQuery.trim()) return;
     
     setIsLoading(true);
     try {
-      const results = await placesApi.searchPlaces(searchQuery, region);
+      const results = await placesApi.searchPlaces(buildPlaceSearchQuery(searchQuery, regionCode), countryCode);
       setPlaces(results);
     } catch (error) {
       toast({
@@ -46,7 +38,18 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, region }: PlaceS
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [countryCode, regionCode, searchQuery, toast]);
+
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        searchPlaces();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setPlaces([]);
+    }
+  }, [searchPlaces, searchQuery]);
 
   const handleAddPlace = (place: PlaceSearchResult) => {
     onAddPlace(place);
@@ -70,7 +73,7 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, region }: PlaceS
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="장소명이나 카테고리를 검색하세요..."
+              placeholder={regionLabel ? `${regionLabel} 근처 장소를 검색하세요...` : "장소명이나 카테고리를 검색하세요..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"

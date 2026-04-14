@@ -12,10 +12,12 @@ import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.core.TripRegion
 import com.tribe.domain.trip.member.TripMember
 import com.tribe.domain.trip.member.TripMemberRepository
 import com.tribe.domain.trip.core.TripRepository
 import com.tribe.domain.trip.member.TripRole
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -28,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import java.time.LocalDate
+import java.util.Optional
 
 @ExtendWith(MockitoExtension::class)
 class TripServiceTest {
@@ -67,12 +70,42 @@ class TripServiceTest {
         `when`(tripRepository.save(any(Trip::class.java))).thenAnswer { it.arguments[0] as Trip }
 
         val result = tripService.createTrip(
-            TripCommand.Create("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN.code),
+            TripCommand.Create("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN.code, TripRegion.JP_TOKYO.code),
         )
 
         assertEquals("Trip", result.title)
+        assertEquals(TripRegion.JP_TOKYO.code, result.regionCode)
         assertEquals(1, result.members.size)
         assertEquals("tribe", result.members.first().nickname)
+    }
+
+    @Test
+    fun `createTrip keeps compatibility when regionCode is missing`() {
+        val member = Member(id = 1L, email = "user@example.com", passwordHash = "hashed", nickname = "tribe")
+        `when`(currentActor.requireUserId()).thenReturn(1L)
+        `when`(memberRepository.findById(1L)).thenReturn(java.util.Optional.of(member))
+        `when`(tripRepository.save(any(Trip::class.java))).thenAnswer { it.arguments[0] as Trip }
+
+        val result = tripService.createTrip(
+            TripCommand.Create("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN.code, null),
+        )
+
+        assertNull(result.regionCode)
+    }
+
+    @Test
+    fun `createTrip rejects regionCode from another country`() {
+        val member = Member(id = 1L, email = "user@example.com", passwordHash = "hashed", nickname = "tribe")
+        `when`(currentActor.requireUserId()).thenReturn(1L)
+        `when`(memberRepository.findById(1L)).thenReturn(java.util.Optional.of(member))
+
+        val ex = assertThrows(com.tribe.application.exception.business.BusinessException::class.java) {
+            tripService.createTrip(
+                TripCommand.Create("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN.code, TripRegion.KR_JEJU.code),
+            )
+        }
+
+        assertEquals(com.tribe.application.exception.ErrorCode.INVALID_INPUT, ex.errorCode)
     }
 
     @Test
@@ -109,7 +142,7 @@ class TripServiceTest {
     @Test
     fun `importTrip clones categories and itinerary items`() {
         val member = Member(id = 1L, email = "user@example.com", passwordHash = "hashed", nickname = "tribe")
-        val originalTrip = Trip("Original", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN)
+        val originalTrip = Trip("Original", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN, TripRegion.JP_TOKYO.code)
         val category = Category(originalTrip, 1, "Day1", 1)
         val item = ItineraryItem(category, null, "Dinner", null, 1, "memo")
         category.itineraryItems.add(item)
@@ -127,6 +160,7 @@ class TripServiceTest {
         )
 
         assertEquals("Imported", result.title)
+        assertEquals(TripRegion.JP_TOKYO.code, result.regionCode)
         assertEquals(1, result.members.size)
     }
 
@@ -138,6 +172,7 @@ class TripServiceTest {
             startDate = LocalDate.of(2026, 4, 12),
             endDate = LocalDate.of(2026, 4, 13),
             country = "JP",
+            regionCode = TripRegion.JP_TOKYO.code,
             members = emptyList(),
         )
         `when`(tripMemberIntegrityService.deleteGuest(TripCommand.DeleteGuest(5L, 10L))).thenReturn(delegated)
@@ -149,5 +184,83 @@ class TripServiceTest {
         assertEquals(5L, tripService.leaveTrip(TripCommand.Leave(5L)).tripId)
         assertEquals(5L, tripService.kickMember(TripCommand.KickMember(5L, 2L)).tripId)
         assertEquals(5L, tripService.assignRole(TripCommand.AssignRole(5L, 2L, "admin")).tripId)
+    }
+
+    @Test
+    fun `updateTrip preserves existing regionCode when omitted for same country`() {
+        val trip = Trip(
+            "Trip",
+            LocalDate.of(2026, 4, 12),
+            LocalDate.of(2026, 4, 13),
+            Country.JAPAN,
+            regionCode = "JP_TOKYO",
+        )
+
+        `when`(tripRepository.findTripWithMembersById(5L)).thenReturn(trip)
+
+        val result = tripService.updateTrip(
+            TripCommand.Update(
+                tripId = 5L,
+                title = "Updated",
+                startDate = LocalDate.of(2026, 4, 14),
+                endDate = LocalDate.of(2026, 4, 15),
+                country = Country.JAPAN.code,
+                regionCode = null,
+            ),
+        )
+
+        assertEquals("JP_TOKYO", result.regionCode)
+    }
+
+    @Test
+    fun `updateTrip clears regionCode when country changes and regionCode omitted`() {
+        val trip = Trip(
+            "Trip",
+            LocalDate.of(2026, 4, 12),
+            LocalDate.of(2026, 4, 13),
+            Country.JAPAN,
+            regionCode = "JP_TOKYO",
+        )
+
+        `when`(tripRepository.findTripWithMembersById(5L)).thenReturn(trip)
+
+        val result = tripService.updateTrip(
+            TripCommand.Update(
+                tripId = 5L,
+                title = "Updated",
+                startDate = LocalDate.of(2026, 4, 14),
+                endDate = LocalDate.of(2026, 4, 15),
+                country = Country.SOUTH_KOREA.code,
+                regionCode = null,
+            ),
+        )
+
+        assertEquals(null, result.regionCode)
+    }
+
+    @Test
+    fun `updateTrip clears regionCode when same country sends explicit empty regionCode`() {
+        val trip = Trip(
+            "Trip",
+            LocalDate.of(2026, 4, 12),
+            LocalDate.of(2026, 4, 13),
+            Country.JAPAN,
+            regionCode = "JP_TOKYO",
+        )
+
+        `when`(tripRepository.findTripWithMembersById(5L)).thenReturn(trip)
+
+        val result = tripService.updateTrip(
+            TripCommand.Update(
+                tripId = 5L,
+                title = "Updated",
+                startDate = LocalDate.of(2026, 4, 14),
+                endDate = LocalDate.of(2026, 4, 15),
+                country = Country.JAPAN.code,
+                regionCode = "",
+            ),
+        )
+
+        assertEquals(null, result.regionCode)
     }
 }

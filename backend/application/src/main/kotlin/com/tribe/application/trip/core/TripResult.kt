@@ -34,6 +34,7 @@ object TripResult {
         val startDate: LocalDate,
         val endDate: LocalDate,
         val country: String,
+        val regionCode: String?,
         val memberCount: Int,
     ) {
         companion object {
@@ -44,6 +45,7 @@ object TripResult {
                     startDate = trip.startDate,
                     endDate = trip.endDate,
                     country = trip.country.koreanName,
+                    regionCode = trip.regionCode,
                     memberCount = trip.members.count { it.role != TripRole.KICKED && it.role != TripRole.EXITED && !it.isGuest },
                 )
             }
@@ -56,6 +58,7 @@ object TripResult {
         val startDate: LocalDate,
         val endDate: LocalDate,
         val country: String,
+        val regionCode: String?,
         val members: List<MemberSummary>,
     ) {
         companion object {
@@ -66,6 +69,7 @@ object TripResult {
                     startDate = trip.startDate,
                     endDate = trip.endDate,
                     country = trip.country.code,
+                    regionCode = trip.regionCode,
                     members = trip.members
                         .filter { it.role != TripRole.KICKED && it.role != TripRole.EXITED }
                         .map(MemberSummary::from),
