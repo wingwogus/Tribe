@@ -6,6 +6,7 @@ import {Label} from "@/components/ui/label";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Country, TripDetail, UpdateTripRequest} from "@/api/trips";
 import {useToast} from "@/hooks/use-toast";
+import {getCountryOptionByCode2, getTripRegionsByCountryCode, TRIP_COUNTRY_OPTIONS} from "@/lib/tripRegions";
 
 interface TripEditModalProps {
   isOpen: boolean;
@@ -14,38 +15,7 @@ interface TripEditModalProps {
   onUpdateTrip: (updates: UpdateTripRequest) => void;
 }
 
-const countryOptions = [
-  { code: Country.SOUTH_KOREA, name: '대한민국', displayName: 'SOUTH_KOREA', code2: "KR" },
-  { code: Country.JAPAN, name: '일본', displayName: 'JAPAN', code2: "JP" },
-  { code: Country.CHINA, name: '중국', displayName: 'CHINA', code2: "CN"  },
-  { code: Country.THAILAND, name: '태국', displayName: 'THAILAND', code2: "TH"  },
-  { code: Country.VIETNAM, name: '베트남', displayName: 'VIETNAM', code2: "VN"  },
-  { code: Country.PHILIPPINES, name: '필리핀', displayName: 'PHILIPPINES', code2: "PH"  },
-  { code: Country.SINGAPORE, name: '싱가포르', displayName: 'SINGAPORE', code2: "SG"  },
-  { code: Country.MALAYSIA, name: '말레이시아', displayName: 'MALAYSIA', code2: "MY"  },
-  { code: Country.INDONESIA, name: '인도네시아', displayName: 'INDONESIA', code2: "ID"  },
-  { code: Country.INDIA, name: '인도', displayName: 'INDIA', code2: "IN"  },
-  { code: Country.UAE, name: '아랍에미리트', displayName: 'UAE', code2: "AE"  },
-  { code: Country.TURKEY, name: '터키', displayName: 'TURKEY', code2: "TR"  },
-  { code: Country.EGYPT, name: '이집트', displayName: 'EGYPT', code2: "EG"  },
-  { code: Country.ITALY, name: '이탈리아', displayName: 'ITALY', code2: "IT"  },
-  { code: Country.FRANCE, name: '프랑스', displayName: 'FRANCE', code2: "FR"  },
-  { code: Country.SPAIN, name: '스페인', displayName: 'SPAIN', code2: "ES"  },
-  { code: Country.UK, name: '영국', displayName: 'UK', code2: "GB"  },
-  { code: Country.GERMANY, name: '독일', displayName: 'GERMANY', code2: "DE"  },
-  { code: Country.SWITZERLAND, name: '스위스', displayName: 'SWITZERLAND', code2: "CH"  },
-  { code: Country.NETHERLANDS, name: '네덜란드', displayName: 'NETHERLANDS', code2: "NL"  },
-  { code: Country.GREECE, name: '그리스', displayName: 'GREECE', code2: "GR"  },
-  { code: Country.USA, name: '미국', displayName: 'USA', code2: "US"  },
-  { code: Country.CANADA, name: '캐나다', displayName: 'CANADA', code2: "CA"  },
-  { code: Country.AUSTRALIA, name: '호주', displayName: 'AUSTRALIA', code2: "AU"  },
-  { code: Country.NEW_ZEALAND, name: '뉴질랜드', displayName: 'NEW_ZEALAND', code2: "NZ"  },
-  { code: Country.BRAZIL, name: '브라질', displayName: 'BRAZIL', code2: "BR"  },
-  { code: Country.ARGENTINA, name: '아르헨티나', displayName: 'ARGENTINA', code2: "AR"  },
-  { code: Country.MEXICO, name: '멕시코', displayName: 'MEXICO', code2: "MX"  },
-  { code: Country.SOUTH_AFRICA, name: '남아프리카 공화국', displayName: 'SOUTH_AFRICA', code2: "ZA"  },
-  { code: Country.MOROCCO, name: '모로코', displayName: 'MOROCCO', code2: "MA"  }
-];
+const NO_REGION_VALUE = "__NONE__";
 
 export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditModalProps) => {
   const { toast } = useToast();
@@ -53,18 +23,27 @@ export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditM
   const [startDate, setStartDate] = useState(trip.startDate);
   const [endDate, setEndDate] = useState(trip.endDate);
   const [country, setCountry] = useState<string>('');
+  const [regionCode, setRegionCode] = useState("");
+  const selectedCountryOption = TRIP_COUNTRY_OPTIONS.find((option) => option.code === country);
+  const availableRegions = getTripRegionsByCountryCode(selectedCountryOption?.code2);
 
   useEffect(() => {
     if (trip) {
       setTitle(trip.title);
       setStartDate(trip.startDate);
       setEndDate(trip.endDate);
-      const countryOption = countryOptions.find(opt => opt.code2 == trip.country);
+      const countryOption = getCountryOptionByCode2(trip.country);
       if (countryOption) {
         setCountry(countryOption.code);
       }
+      setRegionCode(trip.regionCode ?? NO_REGION_VALUE);
     }
   }, [trip]);
+
+  const handleCountryChange = (value: string) => {
+    setCountry(value);
+    setRegionCode("");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +115,7 @@ export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditM
       startDate,
       endDate,
       country: country as Country,
+      regionCode: regionCode === NO_REGION_VALUE ? "" : regionCode || null,
     });
     onClose();
   };
@@ -160,12 +140,12 @@ export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditM
 
           <div className="space-y-2">
             <Label htmlFor="country">국가</Label>
-            <Select value={country} onValueChange={setCountry}>
+            <Select value={country} onValueChange={handleCountryChange}>
               <SelectTrigger>
                 <SelectValue placeholder="국가를 선택하세요" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50 max-h-[300px]">
-                {countryOptions.map((country) => (
+                {TRIP_COUNTRY_OPTIONS.map((country) => (
                     <SelectItem key={country.code} value={country.code}>
                       {country.name} ({country.displayName})
                   </SelectItem>
@@ -173,6 +153,25 @@ export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditM
               </SelectContent>
             </Select>
           </div>
+
+          {availableRegions.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="regionCode">여행 권역</Label>
+              <Select value={regionCode} onValueChange={setRegionCode}>
+                <SelectTrigger>
+                  <SelectValue placeholder="권역을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50 max-h-[260px]">
+                  <SelectItem value={NO_REGION_VALUE}>권역 없음</SelectItem>
+                  {availableRegions.map((region) => (
+                    <SelectItem key={region.code} value={region.code}>
+                      {region.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

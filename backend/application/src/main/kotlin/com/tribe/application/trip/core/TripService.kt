@@ -17,6 +17,7 @@ import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.trip.core.Country
+import com.tribe.domain.trip.core.TripRegion
 import com.tribe.domain.member.MemberRepository
 import com.tribe.domain.trip.core.Trip
 import com.tribe.domain.trip.member.TripMember
@@ -53,11 +54,14 @@ class TripService(
 
     fun createTrip(command: TripCommand.Create): TripResult.TripDetail {
         val member = findCurrentMember()
+        val country = resolveCountry(command.country)
+        val regionCode = validateRegionCode(country, command.regionCode)
         val trip = Trip(
             title = command.title,
             startDate = command.startDate,
             endDate = command.endDate,
-            country = Country.from(command.country),
+            country = country,
+            regionCode = regionCode,
         ).apply {
             addMember(member, TripRole.OWNER)
         }
@@ -103,7 +107,9 @@ class TripService(
     fun updateTrip(command: TripCommand.Update): TripResult.TripDetail {
         tripAuthorizationPolicy.isTripOwner(command.tripId)
         val trip = findTripWithMembers(command.tripId)
-        trip.update(command.title, command.startDate, command.endDate, Country.from(command.country))
+        val country = resolveCountry(command.country)
+        val regionCode = resolveRegionCodeForUpdate(trip, country, command.regionCode)
+        trip.update(command.title, command.startDate, command.endDate, country, regionCode)
         return TripResult.TripDetail.from(trip)
     }
 
@@ -193,6 +199,7 @@ class TripService(
             startDate = command.startDate,
             endDate = command.endDate,
             country = originalTrip.country,
+            regionCode = originalTrip.regionCode,
         )
         importTrip.addMember(member, TripRole.OWNER)
 
@@ -273,6 +280,48 @@ class TripService(
         memberRepository.findById(currentActor.requireUserId()).orElseThrow {
             BusinessException(ErrorCode.USER_NOT_FOUND)
         }
+
+    private fun resolveCountry(value: String): Country =
+        try {
+            Country.from(value)
+        } catch (_: IllegalArgumentException) {
+            throw BusinessException(
+                errorCode = ErrorCode.INVALID_INPUT,
+                detail = mapOf("field" to "country", "reason" to "Unsupported country", "rejectedValue" to value),
+            )
+        }
+
+    private fun validateRegionCode(country: Country, regionCode: String?): String? {
+        val normalizedRegionCode = regionCode?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val region = TripRegion.from(normalizedRegionCode)
+            ?: throw BusinessException(
+                errorCode = ErrorCode.INVALID_INPUT,
+                detail = mapOf("field" to "regionCode", "reason" to "Unsupported region code", "rejectedValue" to regionCode),
+            )
+
+        if (region.country != country) {
+            throw BusinessException(
+                errorCode = ErrorCode.INVALID_INPUT,
+                detail = mapOf(
+                    "field" to "regionCode",
+                    "reason" to "Region code does not belong to country",
+                    "rejectedValue" to regionCode,
+                ),
+            )
+        }
+
+        return region.code
+    }
+
+    private fun resolveRegionCodeForUpdate(trip: Trip, country: Country, requestedRegionCode: String?): String? {
+        if (requestedRegionCode != null && requestedRegionCode.isBlank()) {
+            return null
+        }
+        if (requestedRegionCode == null && trip.country == country) {
+            return trip.regionCode
+        }
+        return validateRegionCode(country, requestedRegionCode)
+    }
 
     private fun findTripWithMembers(tripId: Long): Trip =
         tripRepository.findTripWithMembersById(tripId)

@@ -28,7 +28,7 @@ class TripController(
         @Valid @RequestBody request: TripRequests.CreateRequest,
     ): ResponseEntity<ApiResponse<TripResponses.TripDetailResponse>> {
         val result = tripService.createTrip(
-            TripCommand.Create(request.title, request.startDate, request.endDate, request.country),
+            TripCommand.Create(request.title, request.startDate, request.endDate, request.country, request.regionCode),
         )
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.ok(TripResponses.TripDetailResponse.from(result)))
@@ -54,7 +54,7 @@ class TripController(
         @Valid @RequestBody request: TripRequests.UpdateRequest,
     ): ResponseEntity<ApiResponse<TripResponses.TripDetailResponse>> {
         val result = tripService.updateTrip(
-            TripCommand.Update(tripId, request.title, request.startDate, request.endDate, request.country),
+            TripCommand.Update(tripId, request.title, request.startDate, request.endDate, request.country, request.regionCode),
         )
         return ResponseEntity.ok(ApiResponse.ok(TripResponses.TripDetailResponse.from(result)))
     }

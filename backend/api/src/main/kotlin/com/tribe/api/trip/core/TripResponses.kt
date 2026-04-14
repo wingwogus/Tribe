@@ -33,6 +33,7 @@ object TripResponses {
         val startDate: java.time.LocalDate,
         val endDate: java.time.LocalDate,
         val country: String,
+        val regionCode: String?,
         val memberCount: Int,
     ) {
         companion object {
@@ -42,6 +43,7 @@ object TripResponses {
                 startDate = result.startDate,
                 endDate = result.endDate,
                 country = result.country,
+                regionCode = result.regionCode,
                 memberCount = result.memberCount,
             )
         }
@@ -53,6 +55,7 @@ object TripResponses {
         val startDate: java.time.LocalDate,
         val endDate: java.time.LocalDate,
         val country: String,
+        val regionCode: String?,
         val members: List<MemberResponse>,
     ) {
         companion object {
@@ -62,6 +65,7 @@ object TripResponses {
                 startDate = result.startDate,
                 endDate = result.endDate,
                 country = result.country,
+                regionCode = result.regionCode,
                 members = result.members.map(MemberResponse::from),
             )
         }

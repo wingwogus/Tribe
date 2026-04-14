@@ -15,6 +15,7 @@ object TripRequests {
         val endDate: LocalDate,
         @field:NotBlank(message = "여행 국가는 필수입니다.")
         val country: String,
+        val regionCode: String? = null,
     ) {
         @AssertTrue(message = "여행 시작일은 종료일보다 이전이거나 같아야 합니다.")
         fun isDatesValid(): Boolean = !startDate.isAfter(endDate)
@@ -29,6 +30,7 @@ object TripRequests {
         val endDate: LocalDate,
         @field:NotBlank(message = "여행 국가는 필수입니다.")
         val country: String,
+        val regionCode: String? = null,
     ) {
         @AssertTrue(message = "여행 시작일은 종료일보다 이전이거나 같아야 합니다.")
         fun isDatesValid(): Boolean = !startDate.isAfter(endDate)

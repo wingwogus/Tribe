@@ -97,6 +97,7 @@ import {getCountryTimezone} from "@/lib/utils";
 import {RouteInfoCard} from "@/components/RouteInfoCard";
 import {getDefaultCurrencyByCountry} from "@/lib/currency";
 import {addDays, format} from "date-fns";
+import {formatTripDestination, getCountryLabelByCode2} from "@/lib/tripRegions";
 
 // Category color mapping
 const getCategoryColor = (categoryName: string): { bg: string; text: string; marker: string } => {
@@ -1689,6 +1690,9 @@ const TripPlanner = () => {
                   <p className="text-xs md:text-sm text-muted-foreground">
                     {new Date(tripDetail.startDate).toLocaleDateString()} - {new Date(tripDetail.endDate).toLocaleDateString()}
                   </p>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    {formatTripDestination(getCountryLabelByCode2(tripDetail.country), tripDetail.regionCode)}
+                  </p>
                 </div>
                 {/* Current time display */}
                 {currentTime && (
@@ -2139,6 +2143,7 @@ const TripPlanner = () => {
             getCategoryColor={getCategoryColor}
             wishlistItems={wishlistItems}
             tripCountry={tripDetail?.country}
+            tripRegionCode={tripDetail?.regionCode}
             onAddToItinerary={handleAddWishlistToItinerary}
             onDeleteItinerary={handleDeleteItineraryFromMap}
             onDeleteWishlist={handleDeleteWishlistFromMap}
@@ -2532,7 +2537,8 @@ const TripPlanner = () => {
         isOpen={showPlaceSearchModal}
         onClose={() => setShowPlaceSearchModal(false)}
         onAddPlace={(place) => addWishlistMutation.mutate(place)}
-        region={tripDetail.country}
+        countryCode={tripDetail.country}
+        regionCode={tripDetail.regionCode}
       />
 
       {/* AI Review Modal */}

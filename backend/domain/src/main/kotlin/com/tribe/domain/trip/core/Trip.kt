@@ -30,6 +30,8 @@ class Trip(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var country: Country,
+    @Column(name = "region_code")
+    var regionCode: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -51,11 +53,12 @@ class Trip(
     @OneToMany(mappedBy = "trip", cascade = [CascadeType.ALL], orphanRemoval = true)
     val reviews: MutableList<TripReview> = mutableListOf()
 
-    fun update(title: String, startDate: LocalDate, endDate: LocalDate, country: Country) {
+    fun update(title: String, startDate: LocalDate, endDate: LocalDate, country: Country, regionCode: String?) {
         this.title = title
         this.startDate = startDate
         this.endDate = endDate
         this.country = country
+        this.regionCode = regionCode
     }
 
     fun addMember(member: Member, role: TripRole): TripMember {

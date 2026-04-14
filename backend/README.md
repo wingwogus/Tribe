@@ -44,6 +44,8 @@ spring:
 Local profile now boots against an embedded H2 database by default.
 Override `SPRING_DATASOURCE_*` only when you want to point local at PostgreSQL instead.
 Local also uses `spring.jpa.hibernate.ddl-auto=create` by default, so the schema is recreated from entities on every startup.
+For shared dev/prod environments with `ddl-auto: none`, apply schema changes manually before rollout.
+Example: `backend/api/src/main/resources/db/manual/20260414_add_trip_region_code.sql`
 
 3️⃣ Replace JWT Secret Key
 A sample secret is included.
