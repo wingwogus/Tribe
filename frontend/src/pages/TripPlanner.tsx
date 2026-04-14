@@ -76,8 +76,7 @@ import {ItineraryMap, ItineraryMapHandle} from "@/components/ItineraryMap";
 import {TripChatModal} from "@/components/TripChatModal";
 import {tripApi} from "@/api/trips";
 import {wishlistApi, WishlistItem} from "@/api/wishlist";
-import {categoryApi} from "@/api/categories";
-import {itineraryApi, ItineraryResponse, RouteDetails} from "@/api/itinerary";
+import {fetchAllItinerariesForTrip, itineraryApi, ItineraryResponse, RouteDetails} from "@/api/itinerary";
 import {
   CreateExpenseRequest,
   expensesApi,
@@ -98,79 +97,78 @@ import {RouteInfoCard} from "@/components/RouteInfoCard";
 import {getDefaultCurrencyByCountry} from "@/lib/currency";
 import {addDays, format} from "date-fns";
 
-// Category color mapping
-const getCategoryColor = (categoryName: string): { bg: string; text: string; marker: string } => {
-  const lowerName = categoryName.toLowerCase();
-  if (lowerName.includes('식사') || lowerName.includes('음식')) {
-    return { bg: 'bg-rose-50 dark:bg-rose-950/50', text: 'text-rose-700 dark:text-rose-300', marker: '#FB7185' };
-  }
-  if (lowerName.includes('숙소') || lowerName.includes('호텔')) {
-    return { bg: 'bg-amber-50 dark:bg-amber-950/50', text: 'text-amber-700 dark:text-amber-300', marker: '#FBBF24' };
-  }
-  if (lowerName.includes('관광') || lowerName.includes('명소')) {
-    return { bg: 'bg-emerald-50 dark:bg-emerald-950/50', text: 'text-emerald-700 dark:text-emerald-300', marker: '#34D399' };
-  }
-  if (lowerName.includes('쇼핑')) {
-    return { bg: 'bg-sky-50 dark:bg-sky-950/50', text: 'text-sky-700 dark:text-sky-300', marker: '#38BDF8' };
-  }
-  if (lowerName.includes('액티비티') || lowerName.includes('활동')) {
-    return { bg: 'bg-purple-50 dark:bg-purple-950/50', text: 'text-purple-700 dark:text-purple-300', marker: '#A78BFA' };
-  }
-  // Default color
-  return { bg: 'bg-slate-50 dark:bg-slate-950/50', text: 'text-slate-700 dark:text-slate-300', marker: '#94A3B8' };
+type DaySection = {
+  visitDay: number;
+  label: string;
+  itemOrder: number;
+  day: number;
+  name: string;
+  order: number;
+  itineraryItems: ItineraryResponse[];
 };
 
-// Sortable Category Component
-interface SortableCategoryProps {
-  category: any;
-  categoryIndex: number;
-  categoriesArray: any[];
+const getDaySectionColor = (visitDay: number): { bg: string; text: string; marker: string } => {
+  const palette = [
+    { bg: 'bg-rose-50 dark:bg-rose-950/50', text: 'text-rose-700 dark:text-rose-300', marker: '#FB7185' },
+    { bg: 'bg-amber-50 dark:bg-amber-950/50', text: 'text-amber-700 dark:text-amber-300', marker: '#FBBF24' },
+    { bg: 'bg-emerald-50 dark:bg-emerald-950/50', text: 'text-emerald-700 dark:text-emerald-300', marker: '#34D399' },
+    { bg: 'bg-sky-50 dark:bg-sky-950/50', text: 'text-sky-700 dark:text-sky-300', marker: '#38BDF8' },
+    { bg: 'bg-purple-50 dark:bg-purple-950/50', text: 'text-purple-700 dark:text-purple-300', marker: '#A78BFA' },
+    { bg: 'bg-slate-50 dark:bg-slate-950/50', text: 'text-slate-700 dark:text-slate-300', marker: '#94A3B8' },
+  ];
+  return palette[(Math.max(visitDay, 1) - 1) % palette.length];
+};
+
+interface SortableDaySectionProps {
+  daySection: DaySection;
+  daySectionIndex: number;
+  daySectionsArray: DaySection[];
   day: number;
-  categories: any[];
-  dropTargetCategoryId: number | null;
-  draggedItinerary: any;
+  daySections: DaySection[];
+  dropTargetVisitDay: number | null;
+  draggedItinerary: { item: ItineraryResponse; visitDay: number } | null;
   dragOverItemId: number | null;
   mapRef: React.RefObject<ItineraryMapHandle>;
   findRoutesForItems: (item1: ItineraryResponse, item2: ItineraryResponse) => RouteDetails[];
-  handleCategoryDragOver: (e: React.DragEvent, categoryId: number) => void;
-  handleDragOver: (e: React.DragEvent, categoryId: number) => void;
+  handleDaySectionDragOver: (e: React.DragEvent, visitDay: number) => void;
+  handleDragOver: (e: React.DragEvent, visitDay: number) => void;
   handleDragLeave: () => void;
-  handleDrop: (e: React.DragEvent, categoryId: number) => void;
-  handleUpdateCategoryName: (categoryId: number, currentName: string) => void;
-  handleDeleteCategory: (categoryId: number) => void;
-  handleItineraryDragStart: (item: ItineraryResponse, categoryId: number) => void;
-  handleItineraryDragOver: (e: React.DragEvent, targetItem: ItineraryResponse, categoryId: number) => void;
+  handleDrop: (e: React.DragEvent, visitDay: number) => void;
+  handleUpdateDaySectionName: (visitDay: number, currentName: string) => void;
+  handleDeleteDaySection: (visitDay: number) => void;
+  handleItineraryDragStart: (item: ItineraryResponse, visitDay: number) => void;
+  handleItineraryDragOver: (e: React.DragEvent, targetItem: ItineraryResponse, visitDay: number) => void;
   handleDragEnd: () => void;
   setExpenseModal: (modal: any) => void;
   setEditingItinerary: (editing: any) => void;
   deleteItineraryMutation: any;
   setExpenseDetailModal: (modal: any) => void;
   setExpenseListModal: (modal: any) => void;
-  handleMoveToCategory: (itemId: number, fromCategoryId: number, toCategoryId: number) => Promise<void>;
+  handleMoveToDay: (itemId: number, fromVisitDay: number, toVisitDay: number) => Promise<void>;
   setIsItineraryDrawerOpen?: (open: boolean) => void;
   expensesByItinerary: Map<number, ExpenseSimpleResponse[]>;
   isMobile: boolean;
-  onMoveItemUp: (categoryId: number, itemId: number) => void;
-  onMoveItemDown: (categoryId: number, itemId: number) => void;
+  onMoveItemUp: (visitDay: number, itemId: number) => void;
+  onMoveItemDown: (visitDay: number, itemId: number) => void;
 }
 
-const SortableCategory = ({
-  category,
-  categoryIndex,
-  categoriesArray,
+const SortableDaySection = ({
+  daySection,
+  daySectionIndex,
+  daySectionsArray,
   day,
-  categories,
-  dropTargetCategoryId,
+  daySections,
+  dropTargetVisitDay,
   draggedItinerary,
   dragOverItemId,
   mapRef,
   findRoutesForItems,
-  handleCategoryDragOver,
+  handleDaySectionDragOver,
   handleDragOver,
   handleDragLeave,
   handleDrop,
-  handleUpdateCategoryName,
-  handleDeleteCategory,
+  handleUpdateDaySectionName,
+  handleDeleteDaySection,
   handleItineraryDragStart,
   handleItineraryDragOver,
   handleDragEnd,
@@ -179,13 +177,13 @@ const SortableCategory = ({
   deleteItineraryMutation,
   setExpenseDetailModal,
   setExpenseListModal,
-  handleMoveToCategory,
+  handleMoveToDay,
   setIsItineraryDrawerOpen,
   expensesByItinerary,
   isMobile,
   onMoveItemUp,
   onMoveItemDown,
-}: SortableCategoryProps) => {
+}: SortableDaySectionProps) => {
   const {
     attributes,
     listeners,
@@ -193,7 +191,7 @@ const SortableCategory = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: category.categoryId });
+  } = useSortable({ id: daySection.visitDay });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -201,29 +199,29 @@ const SortableCategory = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const categoryColors = getCategoryColor(category.name);
+  const daySectionColors = getDaySectionColor(daySection.visitDay);
   
-  // Find previous category's last item and current category's first item for inter-category routes
-  const prevCategory = categoryIndex > 0 ? categoriesArray[categoryIndex - 1] : null;
-  const prevCategoryLastItem = prevCategory 
-    ? [...prevCategory.itineraryItems].sort((a, b) => a.order - b.order).pop()
+  // Find previous day section's last item and current day's first item for inter-day routes
+  const previousDaySection = daySectionIndex > 0 ? daySectionsArray[daySectionIndex - 1] : null;
+  const previousDayLastItem = previousDaySection 
+    ? [...previousDaySection.itineraryItems].sort((a, b) => a.order - b.order).pop()
     : null;
-  const currentCategoryFirstItem = [...category.itineraryItems]
+  const currentDayFirstItem = [...daySection.itineraryItems]
     .sort((a, b) => a.order - b.order)[0];
 
   return (
-    <div ref={setNodeRef} style={style} key={category.categoryId}>
-      {/* Inter-category route */}
-      {prevCategoryLastItem && currentCategoryFirstItem && 
-       prevCategoryLastItem.location && currentCategoryFirstItem.location && (() => {
-        const routes = findRoutesForItems(prevCategoryLastItem, currentCategoryFirstItem);
+    <div ref={setNodeRef} style={style} key={daySection.visitDay}>
+      {/* Inter-day route */}
+      {previousDayLastItem && currentDayFirstItem && 
+       previousDayLastItem.location && currentDayFirstItem.location && (() => {
+        const routes = findRoutesForItems(previousDayLastItem, currentDayFirstItem);
         if (routes.length > 0) {
           return (
             <div className="mb-3">
               <RouteInfoCard
                 routes={routes}
-                originName={prevCategoryLastItem.name}
-                destinationName={currentCategoryFirstItem.name}
+                originName={previousDayLastItem.name}
+                destinationName={currentDayFirstItem.name}
               />
             </div>
           );
@@ -233,13 +231,13 @@ const SortableCategory = ({
       
       <div 
         className={`border rounded-lg p-3 md:p-4 transition-all duration-200 ${
-          dropTargetCategoryId === category.categoryId
+          dropTargetVisitDay === daySection.visitDay
             ? 'bg-primary/10 border-primary border-2 scale-[1.02]'
-            : categoryColors.bg
+            : daySectionColors.bg
         }`}
-        onDragOver={(e) => draggedItinerary ? handleCategoryDragOver(e, category.categoryId) : handleDragOver(e, category.categoryId)}
+        onDragOver={(e) => draggedItinerary ? handleDaySectionDragOver(e, daySection.visitDay) : handleDragOver(e, daySection.visitDay)}
         onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDrop(e, category.categoryId)}
+        onDrop={(e) => handleDrop(e, daySection.visitDay)}
       >
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -250,13 +248,13 @@ const SortableCategory = ({
             >
               <GripVertical className="w-4 h-4 text-muted-foreground" />
             </button>
-            <h3 className={`font-medium text-sm md:text-base ${categoryColors.text}`}>{category.name}</h3>
+            <h3 className={`font-medium text-sm md:text-base ${daySectionColors.text}`}>{daySection.label}</h3>
           </div>
           <div className="flex space-x-1 md:space-x-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleUpdateCategoryName(category.categoryId, category.name)}
+              onClick={() => handleUpdateDaySectionName(daySection.visitDay, daySection.label)}
               className="h-8 w-8 p-0"
             >
               <Edit3 className="w-3 h-3 md:w-4 md:h-4" />
@@ -264,7 +262,7 @@ const SortableCategory = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleDeleteCategory(category.categoryId)}
+              onClick={() => handleDeleteDaySection(daySection.visitDay)}
               className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
             >
               <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
@@ -274,9 +272,9 @@ const SortableCategory = ({
        
         {/* Itinerary items */}
         <div className="space-y-2">
-          {category.itineraryItems.length === 0 ? (
+          {daySection.itineraryItems.length === 0 ? (
             <div className={`text-sm text-center py-8 rounded-lg border-2 border-dashed transition-all ${
-              dropTargetCategoryId === category.categoryId
+              dropTargetVisitDay === daySection.visitDay
                 ? 'border-primary bg-primary/5 text-primary'
                 : 'border-muted-foreground/30 text-muted-foreground'
             }`}>
@@ -287,16 +285,16 @@ const SortableCategory = ({
             </div>
           ) : (
             <>
-               {category.itineraryItems
+               {daySection.itineraryItems
                  .sort((a, b) => a.order - b.order)
                  .map((item, itemIndex, sortedItems) => {
                    // Calculate pin number for items with location
                    let pinNumber: number | null = null;
                    if (item.location) {
-                     // Count all items with location up to this point across all categories
+                     // Count all items with location up to this point across all day sections
                      let count = 0;
-                     for (const cat of categories.filter(c => c.day === day).sort((a, b) => a.order - b.order)) {
-                       for (const itItem of cat.itineraryItems.sort((a, b) => a.order - b.order)) {
+                     for (const section of daySections.filter((value) => value.visitDay === day).sort((a, b) => a.itemOrder - b.itemOrder)) {
+                       for (const itItem of section.itineraryItems.sort((a, b) => a.order - b.order)) {
                          if (itItem.location) {
                            count++;
                            if (itItem.itineraryId === item.itineraryId) {
@@ -313,8 +311,8 @@ const SortableCategory = ({
                    <div key={item.itineraryId}>
                      <div 
                        draggable
-                       onDragStart={() => handleItineraryDragStart(item, category.categoryId)}
-                       onDragOver={(e) => handleItineraryDragOver(e, item, category.categoryId)}
+                       onDragStart={() => handleItineraryDragStart(item, daySection.visitDay)}
+                       onDragOver={(e) => handleItineraryDragOver(e, item, daySection.visitDay)}
                        onDragEnd={handleDragEnd}
                        className={`bg-white p-3 rounded border cursor-move transition-all duration-200 ${
                          draggedItinerary?.item.itineraryId === item.itineraryId
@@ -330,7 +328,7 @@ const SortableCategory = ({
                            {pinNumber && (
                               <div 
                                 className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white cursor-pointer hover:scale-110 transition-transform"
-                                style={{ backgroundColor: getCategoryColor(category.name).marker }}
+                                style={{ backgroundColor: getDaySectionColor(daySection.visitDay).marker }}
                                 onClick={() => {
                                   if (item.location && mapRef.current) {
                                     mapRef.current.flyToMarker(item.itineraryId);
@@ -462,7 +460,7 @@ const SortableCategory = ({
                           size="sm"
                           onClick={() => setEditingItinerary({
                             itemId: item.itineraryId,
-                            categoryId: category.categoryId,
+                            visitDay: daySection.visitDay,
                             memo: item.memo || "",
                             time: item.time || ""
                           })}
@@ -474,7 +472,7 @@ const SortableCategory = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => deleteItineraryMutation.mutate({
-                            categoryId: category.categoryId,
+                            visitDay: daySection.visitDay,
                             itemId: item.itineraryId
                           })}
                           className="h-7 w-7 p-0 text-destructive hover:text-destructive-foreground hover:bg-destructive"
@@ -496,22 +494,22 @@ const SortableCategory = ({
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger>
                               <ArrowRightLeft className="w-4 h-4 mr-2" />
-                              다른 카테고리로 이동
+                              다른 날짜로 이동
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="bg-white">
-                              {categories
-                                .filter(cat => cat.day === day && cat.categoryId !== category.categoryId)
-                                .map(targetCategory => (
+                              {daySections
+                                .filter(section => section.visitDay !== daySection.visitDay)
+                                .map(targetDaySection => (
                                   <DropdownMenuItem
-                                    key={targetCategory.categoryId}
-                                    onClick={() => handleMoveToCategory(item.itineraryId, category.categoryId, targetCategory.categoryId)}
+                                    key={targetDaySection.visitDay}
+                                    onClick={() => handleMoveToDay(item.itineraryId, daySection.visitDay, targetDaySection.visitDay)}
                                   >
-                                    {targetCategory.name}
+                                    {targetDaySection.label}
                                   </DropdownMenuItem>
                                 ))}
-                              {categories.filter(cat => cat.day === day && cat.categoryId !== category.categoryId).length === 0 && (
+                              {daySections.filter(section => section.visitDay !== daySection.visitDay).length === 0 && (
                                 <DropdownMenuItem disabled>
-                                  다른 카테고리가 없습니다
+                                  다른 날짜가 없습니다
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuSubContent>
@@ -525,7 +523,7 @@ const SortableCategory = ({
                                  size="icon"
                                  className="h-6 w-6 p-0"
                                  disabled={itemIndex === 0}
-                                 onClick={() => onMoveItemUp(category.categoryId, item.itineraryId)}
+                                 onClick={() => onMoveItemUp(daySection.visitDay, item.itineraryId)}
                              >
                                <ChevronUp className="w-3 h-3" />
                              </Button>
@@ -534,7 +532,7 @@ const SortableCategory = ({
                                  size="icon"
                                  className="h-6 w-6 p-0"
                                  disabled={itemIndex === sortedItems.length - 1}
-                                 onClick={() => onMoveItemDown(category.categoryId, item.itineraryId)}
+                                 onClick={() => onMoveItemDown(daySection.visitDay, item.itineraryId)}
                              >
                                <ChevronDown className="w-3 h-3" />
                              </Button>
@@ -545,7 +543,7 @@ const SortableCategory = ({
                    </div>
                    </div>
                    
-                   {/* Route between items within category */}
+                   {/* Route between items within a day section */}
                    {itemIndex < sortedItems.length - 1 && (() => {
                      const nextItem = sortedItems[itemIndex + 1];
                      if (item.location && nextItem.location) {
@@ -592,25 +590,25 @@ const TripPlanner = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [editingItinerary, setEditingItinerary] = useState<{
     itemId: number;
-    categoryId: number;
+    visitDay: number;
     memo: string;
     time: string;
   } | null>(null);
   const [draggedItem, setDraggedItem] = useState<WishlistItem | null>(null);
-  const [dropTargetCategoryId, setDropTargetCategoryId] = useState<number | null>(null);
+  const [dropTargetVisitDay, setDropTargetVisitDay] = useState<number | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<number | null>(null);
   const [draggedItinerary, setDraggedItinerary] = useState<{
     item: ItineraryResponse;
-    categoryId: number;
+    visitDay: number;
   } | null>(null);
   const [createItineraryModal, setCreateItineraryModal] = useState<{
     isOpen: boolean;
-    categoryId: number;
-    categoryName: string;
+    visitDay: number;
+    dayLabel: string;
   }>({
     isOpen: false,
-    categoryId: 0,
-    categoryName: "",
+    visitDay: 0,
+    dayLabel: "",
   });
   const [expenseModal, setExpenseModal] = useState<{
     isOpen: boolean;
@@ -693,6 +691,10 @@ const TripPlanner = () => {
     enabled: !!tripId,
   });
 
+  const totalDays = tripDetail
+    ? Math.ceil((new Date(tripDetail.endDate).getTime() - new Date(tripDetail.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1
+    : 0;
+
   const myTripMemberId = useMemo(() => {
     if (!tripDetail || !memberInfo) return null;
     const me = tripDetail.members.find((m) => m.memberId === memberInfo.memberId);
@@ -713,19 +715,39 @@ const TripPlanner = () => {
     enabled: !!tripId,
   });
 
-  // Categories query
-  const { data: categories = [] } = useQuery({
-    queryKey: tripQueryKeys.categories(tripId ?? ""),
-    queryFn: () => categoryApi.getCategories(Number(tripId)),
+  // Itinerary query
+  const { data: itineraryItems = [] } = useQuery({
+    queryKey: tripQueryKeys.itinerary(tripId ?? ""),
+    queryFn: () => fetchAllItinerariesForTrip(Number(tripId)),
     enabled: !!tripId,
   });
 
-  const resolveExpenseDate = useCallback((categoryId?: number | null, fallbackDate?: string) => {
-    if (!tripDetail?.startDate || !categoryId) {
+  const daySections = useMemo(
+    () =>
+      Array.from({ length: totalDays }, (_, index) => {
+        const day = index + 1;
+        return {
+          visitDay: day,
+          label: `Day ${day}`,
+          itemOrder: day,
+          name: `Day ${day}`,
+          day,
+          order: day,
+          isDaySection: true,
+          itineraryItems: itineraryItems
+            .filter((item) => item.visitDay === day)
+            .sort((a, b) => a.itemOrder - b.itemOrder),
+        };
+      }),
+    [itineraryItems, totalDays],
+  );
+
+  const resolveExpenseDate = useCallback((visitDay?: number | null, fallbackDate?: string) => {
+    if (!tripDetail?.startDate || !visitDay) {
       return fallbackDate || new Date().toISOString().slice(0, 10);
     }
 
-    const category = categories.find((value) => value.categoryId === categoryId);
+    const category = daySections.find((value) => value.visitDay === visitDay);
     if (!category) {
       return fallbackDate || new Date().toISOString().slice(0, 10);
     }
@@ -733,7 +755,7 @@ const TripPlanner = () => {
     const baseDate = new Date(`${tripDetail.startDate}T00:00:00`);
     baseDate.setDate(baseDate.getDate() + Math.max(category.day - 1, 0));
     return baseDate.toISOString().slice(0, 10);
-  }, [categories, tripDetail?.startDate]);
+  }, [daySections, tripDetail?.startDate]);
 
   // Directions query
   const { data: directionsData = [] } = useQuery({
@@ -761,7 +783,7 @@ const TripPlanner = () => {
       
       return allRoutes;
     },
-    enabled: !!tripId && categories.length > 0,
+    enabled: !!tripId && itineraryItems.length > 0,
   });
 
   // Expense detail query
@@ -850,47 +872,6 @@ const TripPlanner = () => {
     },
   });
 
-  // Create category mutation
-  const createCategoryMutation = useMutation({
-    mutationFn: ({ day, name, order }: { day: number; name: string; order: number }) =>
-      categoryApi.createCategory(Number(tripId), { name, day, order }),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
-      toast({
-        title: "카테고리 추가됨",
-        description: `${variables.name} 카테고리가 추가되었습니다.`,
-      });
-    },
-    onError: () => {
-      toast({
-        title: "추가 실패",
-        description: "카테고리 추가 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Update category order mutation
-  const updateCategoryOrderMutation = useMutation({
-    mutationFn: (items: { categoryId: number; order: number }[]) =>
-      categoryApi.updateCategoryOrder(Number(tripId), { items }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
-      toast({
-        title: "순서 변경됨",
-        description: "카테고리 순서가 변경되었습니다.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "순서 변경 실패",
-        description: "카테고리 순서 변경 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Sensors for drag and drop
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -922,71 +903,25 @@ const TripPlanner = () => {
   }, [tripDetail?.country]);
 
   const handleAddCategory = (day: number) => {
-    const categoryName = prompt(`Day ${day}에 추가할 카테고리 이름을 입력하세요:`);
-    if (!categoryName) return;
-
-    const dayCategories = categories.filter(cat => cat.day === day);
-    const nextOrder = dayCategories.length > 0 ? Math.max(...dayCategories.map(cat => cat.order)) + 1 : 0;
-
-    createCategoryMutation.mutate({ day, name: categoryName, order: nextOrder });
+    setCreateItineraryModal({ isOpen: true, visitDay: day, dayLabel: `Day ${day}` });
   };
 
-  const handleQuickAddCategory = (day: number, categoryName: string) => {
-    const dayCategories = categories.filter(cat => cat.day === day);
-    const nextOrder = dayCategories.length > 0 ? Math.max(...dayCategories.map(cat => cat.order)) + 1 : 0;
-
-    createCategoryMutation.mutate({ day, name: categoryName, order: nextOrder });
+  const handleQuickAddCategory = (day: number, _dayLabel: string) => {
+    setCreateItineraryModal({ isOpen: true, visitDay: day, dayLabel: `Day ${day}` });
   };
 
-  // Delete category mutation
-  const deleteCategoryMutation = useMutation({
-    mutationFn: (categoryId: number) =>
-      categoryApi.deleteCategory(Number(tripId), categoryId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
-      toast({
-        title: "카테고리 삭제됨",
-        description: "카테고리가 삭제되었습니다.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "삭제 실패",
-        description: "카테고리 삭제 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleDeleteCategory = (categoryId: number) => {
-    if (!confirm("이 카테고리와 포함된 모든 일정을 삭제하시겠습니까?")) return;
-    deleteCategoryMutation.mutate(categoryId);
+  const handleDeleteCategory = (_visitDay: number) => {
+    toast({
+      title: "비활성화됨",
+      description: "날짜 섹션 삭제는 더 이상 지원되지 않습니다.",
+    });
   };
 
-  // Update category mutation
-  const updateCategoryMutation = useMutation({
-    mutationFn: ({ categoryId, name }: { categoryId: number; name: string }) =>
-      categoryApi.updateCategory(Number(tripId), categoryId, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
-      toast({
-        title: "카테고리 수정됨",
-        description: "카테고리 이름이 수정되었습니다.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "수정 실패",
-        description: "카테고리 수정 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleUpdateCategoryName = (categoryId: number, currentName: string) => {
-    const newName = prompt("카테고리 이름을 입력하세요:", currentName);
-    if (!newName || newName === currentName) return;
-    updateCategoryMutation.mutate({ categoryId, name: newName });
+  const handleUpdateCategoryName = (_visitDay: number, _currentName: string) => {
+    toast({
+      title: "비활성화됨",
+      description: "날짜 섹션 이름 수정은 더 이상 지원되지 않습니다.",
+    });
   };
 
   // Generate invite link
@@ -1010,10 +945,10 @@ const TripPlanner = () => {
   // Add itinerary from wishlist
   const addItineraryMutation = useMutation({
     mutationFn: ({ 
-      categoryId, 
+      visitDay, 
       data 
     }: { 
-      categoryId: number; 
+      visitDay: number; 
       data: {
         placeId?: number | null;
         title?: string | null;
@@ -1021,9 +956,12 @@ const TripPlanner = () => {
         memo?: string | null;
       }
     }) =>
-      itineraryApi.createItinerary(Number(tripId), categoryId, data),
+      itineraryApi.createItinerary(Number(tripId), visitDay, {
+        visitDay: visitDay,
+        ...data,
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
       toast({
         title: "일정 추가됨",
@@ -1040,16 +978,17 @@ const TripPlanner = () => {
   });
 
   // Handle adding wishlist item to itinerary from map
-  const handleAddWishlistToItinerary = async (wishlistItem: WishlistItem, categoryId: number) => {
+  const handleAddWishlistToItinerary = async (wishlistItem: WishlistItem, visitDay: number) => {
     try {
-      await itineraryApi.createItinerary(Number(tripId), categoryId, {
+      await itineraryApi.createItinerary(Number(tripId), visitDay, {
+        visitDay: visitDay,
         placeId: wishlistItem.placeId,
         memo: null,
         time: null,
         title: null,
       });
       
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
       
       toast({
@@ -1068,17 +1007,20 @@ const TripPlanner = () => {
   // Update itinerary
   const updateItineraryMutation = useMutation({
     mutationFn: ({ 
-      categoryId, 
+      visitDay, 
       itemId, 
       updates 
     }: { 
-      categoryId: number; 
+      visitDay: number; 
       itemId: number; 
       updates: { time?: string; memo?: string } 
     }) =>
-      itineraryApi.updateItinerary(Number(tripId), categoryId, itemId, updates),
+      itineraryApi.updateItinerary(Number(tripId), visitDay, itemId, {
+        visitDay: visitDay,
+        ...updates,
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       setEditingItinerary(null);
       toast({
         title: "수정 완료",
@@ -1096,10 +1038,10 @@ const TripPlanner = () => {
 
   // Delete itinerary
   const deleteItineraryMutation = useMutation({
-    mutationFn: ({ categoryId, itemId }: { categoryId: number; itemId: number }) =>
-      itineraryApi.deleteItinerary(Number(tripId), categoryId, itemId),
+    mutationFn: ({ visitDay, itemId }: { visitDay: number; itemId: number }) =>
+      itineraryApi.deleteItinerary(Number(tripId), visitDay, itemId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
       toast({
         title: "삭제 완료",
@@ -1116,9 +1058,9 @@ const TripPlanner = () => {
   });
 
   // Delete itinerary from map
-  const handleDeleteItineraryFromMap = (itineraryId: number, categoryId: number) => {
+  const handleDeleteItineraryFromMap = (itineraryId: number, visitDay: number) => {
     if (window.confirm('이 일정을 삭제하시겠습니까?')) {
-      deleteItineraryMutation.mutate({ categoryId, itemId: itineraryId });
+      deleteItineraryMutation.mutate({ visitDay, itemId: itineraryId });
     }
   };
 
@@ -1131,10 +1073,10 @@ const TripPlanner = () => {
 
   // Update itinerary order
   const updateItineraryOrderMutation = useMutation({
-    mutationFn: (orderData: { items: { itemId: number; categoryId: number; order: number }[] }) =>
+    mutationFn: (orderData: { items: { itemId: number; visitDay: number; itemOrder: number }[] }) =>
       itineraryApi.updateItineraryOrder(Number(tripId), orderData),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
       toast({
         title: "순서 변경 완료",
@@ -1151,7 +1093,7 @@ const TripPlanner = () => {
   });
 
   // Move itinerary item to another category (using same API as drag-and-drop)
-  const handleMoveToCategory = async (
+  const handleMoveToDay = async (
     itemId: number,
     fromCategoryId: number,
     toCategoryId: number
@@ -1160,9 +1102,9 @@ const TripPlanner = () => {
       if (!tripId) return;
 
       // Find the item details
-      const sourceCategory = categories.find(cat => cat.categoryId === fromCategoryId);
+      const sourceCategory = daySections.find(cat => cat.visitDay === fromCategoryId);
       const itemToMove = sourceCategory?.itineraryItems.find(it => it.itineraryId === itemId);
-      const targetCategory = categories.find(cat => cat.categoryId === toCategoryId);
+      const targetCategory = daySections.find(cat => cat.visitDay === toCategoryId);
 
       if (!itemToMove || !targetCategory || !sourceCategory) {
         throw new Error("항목을 찾을 수 없습니다");
@@ -1173,22 +1115,22 @@ const TripPlanner = () => {
         .filter(it => it.itineraryId !== itemId)
         .map((it, idx) => ({
           itemId: it.itineraryId,
-          categoryId: fromCategoryId,
-          order: idx
+          visitDay: fromCategoryId,
+          itemOrder: idx
         }));
 
       // 2. Target category items with current order
       const targetItems = targetCategory.itineraryItems.map((it, idx) => ({
         itemId: it.itineraryId,
-        categoryId: toCategoryId,
-        order: idx
+        visitDay: toCategoryId,
+        itemOrder: idx
       }));
 
       // 3. Add moved item to the end of target category
       const movedItem = {
         itemId: itemId,
-        categoryId: toCategoryId,
-        order: targetItems.length
+        visitDay: toCategoryId,
+        itemOrder: targetItems.length
       };
 
       // 4. Call updateItineraryOrder API (same as drag-and-drop)
@@ -1197,7 +1139,7 @@ const TripPlanner = () => {
       });
 
       // Refetch data to ensure sync
-      await queryClient.refetchQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      await queryClient.refetchQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       await queryClient.refetchQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
 
       toast({
@@ -1257,7 +1199,7 @@ const TripPlanner = () => {
           price: item.price
         })),
         currency: expenseData.currency || 'KRW', // 추가: 통화 정보
-        date: resolveExpenseDate(expenseModal.itineraryItem?.categoryId, expenseData.date),
+        date: resolveExpenseDate(expenseModal.itineraryItem?.visitDay, expenseData.date),
       };
 
       const expenseResponse = await expensesApi.createExpense(request, imageFile);
@@ -1282,7 +1224,7 @@ const TripPlanner = () => {
       return expenseResponse;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.dailySettlementRoot(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.totalSettlement(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.expenses(tripId ?? "") });
@@ -1319,7 +1261,7 @@ const TripPlanner = () => {
         payerId: expenseData.payerId,
         currency: expenseData.currency || 'KRW',
         itineraryItemId: expenseModal.itineraryItem?.itineraryId || null,
-        date: resolveExpenseDate(expenseModal.itineraryItem?.categoryId, expenseData.date),
+        date: resolveExpenseDate(expenseModal.itineraryItem?.visitDay, expenseData.date),
         items: expenseData.items.map((item: any) => ({
           itemId: item.itemId || null, // itemId 포함 (null이면 새 항목)
           itemName: item.name,
@@ -1357,7 +1299,7 @@ const TripPlanner = () => {
       return expenseResponse;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.dailySettlementRoot(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.totalSettlement(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.expenses(tripId ?? "") });
@@ -1383,7 +1325,7 @@ const TripPlanner = () => {
     mutationFn: (expenseId: number) => 
       expensesApi.deleteExpense(Number(tripId), expenseId),
     onSuccess: (_, expenseId) => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.dailySettlementRoot(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.totalSettlement(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.expenses(tripId ?? "") });
@@ -1411,26 +1353,26 @@ const TripPlanner = () => {
   const handleDragEnd = () => {
     setDraggedItem(null);
     setDraggedItinerary(null);
-    setDropTargetCategoryId(null);
+    setDropTargetVisitDay(null);
     setDragOverItemId(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, categoryId: number) => {
+  const handleDragOver = (e: React.DragEvent, visitDay: number) => {
     e.preventDefault();
-    setDropTargetCategoryId(categoryId);
+    setDropTargetVisitDay(visitDay);
   };
 
   const handleDragLeave = () => {
-    setDropTargetCategoryId(null);
+    setDropTargetVisitDay(null);
   };
 
-  const handleDrop = (e: React.DragEvent, categoryId: number) => {
+  const handleDrop = (e: React.DragEvent, visitDay: number) => {
     e.preventDefault();
     
     if (draggedItem) {
       // Dropping wishlist item
       addItineraryMutation.mutate({
-        categoryId,
+        visitDay,
         data: {
           placeId: Number(draggedItem.placeId) || null,
           title: null,
@@ -1440,11 +1382,11 @@ const TripPlanner = () => {
       });
     } else if (draggedItinerary) {
       // Handle itinerary item drop (within same category or cross-category)
-      const sourceCategory = categories.find(c => c.categoryId === draggedItinerary.categoryId);
-      const targetCategory = categories.find(c => c.categoryId === categoryId);
+      const sourceCategory = daySections.find(c => c.visitDay === draggedItinerary.visitDay);
+      const targetCategory = daySections.find(c => c.visitDay === visitDay);
       
       if (sourceCategory && targetCategory) {
-        const isSameCategory = sourceCategory.categoryId === targetCategory.categoryId;
+        const isSameCategory = sourceCategory.visitDay === targetCategory.visitDay;
         
         if (isSameCategory) {
           // Reordering within the same category
@@ -1469,8 +1411,8 @@ const TripPlanner = () => {
             const orderData = {
               items: items.map((item, index) => ({
                 itemId: item.itineraryId,
-                categoryId: categoryId,
-                order: index
+                visitDay: visitDay,
+                itemOrder: index
               }))
             };
             
@@ -1495,17 +1437,17 @@ const TripPlanner = () => {
           
           targetItems.splice(dropIndex, 0, draggedItinerary.item);
           
-          // Create order update request for both categories
+          // Create order update request for both daySections
           const allItems = [
             ...sourceItems.map((item, index) => ({
               itemId: item.itineraryId,
-              categoryId: sourceCategory.categoryId,
-              order: index
+              visitDay: sourceCategory.visitDay,
+              itemOrder: index
             })),
             ...targetItems.map((item, index) => ({
               itemId: item.itineraryId,
-              categoryId: targetCategory.categoryId,
-              order: index
+              visitDay: targetCategory.visitDay,
+              itemOrder: index
             }))
           ];
           
@@ -1516,16 +1458,16 @@ const TripPlanner = () => {
     
     setDraggedItem(null);
     setDraggedItinerary(null);
-    setDropTargetCategoryId(null);
+    setDropTargetVisitDay(null);
     setDragOverItemId(null);
   };
 
   // Drag handlers for itinerary items
-  const handleItineraryDragStart = (item: ItineraryResponse, categoryId: number) => {
-    setDraggedItinerary({ item, categoryId });
+  const handleItineraryDragStart = (item: ItineraryResponse, visitDay: number) => {
+    setDraggedItinerary({ item, visitDay });
   };
 
-  const handleItineraryDragOver = (e: React.DragEvent, targetItem: ItineraryResponse, categoryId: number) => {
+  const handleItineraryDragOver = (e: React.DragEvent, targetItem: ItineraryResponse, visitDay: number) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -1533,46 +1475,41 @@ const TripPlanner = () => {
     
     // Set the drag over item for visual feedback and drop position
     setDragOverItemId(targetItem.itineraryId);
-    setDropTargetCategoryId(categoryId);
+    setDropTargetVisitDay(visitDay);
   };
 
-  const handleCategoryDragOver = (e: React.DragEvent, categoryId: number) => {
+  const handleDaySectionDragOver = (e: React.DragEvent, visitDay: number) => {
     e.preventDefault();
     if (draggedItinerary) {
-      setDropTargetCategoryId(categoryId);
+      setDropTargetVisitDay(visitDay);
       setDragOverItemId(null); // Clear item hover when over empty space
     }
   };
 
   // Handle category drag end for reordering
-  const handleCategoryDragEnd = (event: DragEndEvent, day: number) => {
+  const handleDaySectionDragEnd = (event: DragEndEvent, day: number) => {
     const { active, over } = event;
 
     if (!over || active.id === over.id) return;
 
-    const dayCategories = categories
+    const dayCategories = daySections
       .filter(cat => cat.day === day)
       .sort((a, b) => a.order - b.order);
 
-    const oldIndex = dayCategories.findIndex(cat => cat.categoryId === active.id);
-    const newIndex = dayCategories.findIndex(cat => cat.categoryId === over.id);
+    if (dayCategories.length <= 1) return;
+
+    const oldIndex = dayCategories.findIndex(cat => cat.visitDay === active.id);
+    const newIndex = dayCategories.findIndex(cat => cat.visitDay === over.id);
 
     if (oldIndex === -1 || newIndex === -1) return;
 
     const reorderedCategories = arrayMove(dayCategories, oldIndex, newIndex);
-
-    // Update order values
-    const updatedOrders = reorderedCategories.map((cat, index) => ({
-      categoryId: cat.categoryId,
-      order: index
-    }));
-
-    updateCategoryOrderMutation.mutate(updatedOrders);
+    if (reorderedCategories.length <= 1) return;
   };
 
   // Move itinerary item up/down within a category (used mainly on mobile)
-  const handleMoveItemWithinCategory = (categoryId: number, itemId: number, direction: 'up' | 'down') => {
-    const category = categories.find((c) => c.categoryId === categoryId);
+  const handleMoveItemWithinDaySection = (visitDay: number, itemId: number, direction: 'up' | 'down') => {
+    const category = daySections.find((c) => c.visitDay === visitDay);
     if (!category) return;
 
     const items = [...category.itineraryItems].sort((a, b) => a.order - b.order);
@@ -1587,20 +1524,20 @@ const TripPlanner = () => {
     const orderData = {
       items: reorderedItems.map((item, index) => ({
         itemId: item.itineraryId,
-        categoryId,
-        order: index,
+        visitDay: visitDay,
+        itemOrder: index,
       })),
     };
 
     updateItineraryOrderMutation.mutate(orderData);
   };
 
-  const handleMoveItemUp = (categoryId: number, itemId: number) => {
-    handleMoveItemWithinCategory(categoryId, itemId, 'up');
+  const handleMoveItemUp = (visitDay: number, itemId: number) => {
+    handleMoveItemWithinDaySection(visitDay, itemId, 'up');
   };
 
-  const handleMoveItemDown = (categoryId: number, itemId: number) => {
-    handleMoveItemWithinCategory(categoryId, itemId, 'down');
+  const handleMoveItemDown = (visitDay: number, itemId: number) => {
+    handleMoveItemWithinDaySection(visitDay, itemId, 'down');
   };
 
   // Copy invite link
@@ -1645,8 +1582,6 @@ const TripPlanner = () => {
       </div>
     );
   }
-
-  const totalDays = Math.ceil((new Date(tripDetail.endDate).getTime() - new Date(tripDetail.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
   // Helper function to get date for a day
   const getDateForDay = (day: number) => {
@@ -1840,8 +1775,8 @@ const TripPlanner = () => {
                           <HelpCircle className="w-3.5 h-3.5" />
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-xs">
-                        <p>카테고리와 일정을 드래그하여 순서를 변경할 수 있습니다</p>
+                        <TooltipContent side="bottom" className="max-w-xs">
+                        <p>일정을 드래그하여 날짜별 순서를 변경할 수 있습니다</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -1873,39 +1808,39 @@ const TripPlanner = () => {
                   </TabsList>
 
                   {Array.from({ length: totalDays }, (_, i) => i + 1).map((day) => {
-                    const dayCategories = categories.filter(cat => cat.day === day);
+                    const dayCategories = daySections.filter(cat => cat.day === day);
 
                     return (
                       <TabsContent key={day} value={String(day)} className="mt-3 space-y-3">
                         <DndContext
                           sensors={sensors}
                           collisionDetection={closestCenter}
-                          onDragEnd={(event) => handleCategoryDragEnd(event, day)}
+                          onDragEnd={(event) => handleDaySectionDragEnd(event, day)}
                         >
                           <SortableContext
-                            items={dayCategories.map(cat => cat.categoryId)}
+                            items={dayCategories.map(cat => cat.visitDay)}
                             strategy={verticalListSortingStrategy}
                           >
             <div className="space-y-3">
-              {dayCategories.map((category, categoryIndex) => (
-                <SortableCategory
-                  key={category.categoryId}
-                  category={category}
-                  categoryIndex={categoryIndex}
-                  categoriesArray={dayCategories}
+              {dayCategories.map((daySection, daySectionIndex) => (
+                <SortableDaySection
+                  key={daySection.visitDay}
+                  daySection={daySection}
+                  daySectionIndex={daySectionIndex}
+                  daySectionsArray={dayCategories}
                   day={day}
-                  categories={categories}
-                  dropTargetCategoryId={dropTargetCategoryId}
+                  daySections={daySections}
+                  dropTargetVisitDay={dropTargetVisitDay}
                   draggedItinerary={draggedItinerary}
                   dragOverItemId={dragOverItemId}
                   mapRef={mapRef}
                   findRoutesForItems={findRoutesForItems}
-                  handleCategoryDragOver={handleCategoryDragOver}
+                  handleDaySectionDragOver={handleDaySectionDragOver}
                   handleDragOver={handleDragOver}
                   handleDragLeave={handleDragLeave}
                   handleDrop={handleDrop}
-                  handleUpdateCategoryName={handleUpdateCategoryName}
-                  handleDeleteCategory={handleDeleteCategory}
+                  handleUpdateDaySectionName={handleUpdateCategoryName}
+                  handleDeleteDaySection={handleDeleteCategory}
                   handleItineraryDragStart={handleItineraryDragStart}
                   handleItineraryDragOver={handleItineraryDragOver}
                   handleDragEnd={handleDragEnd}
@@ -1914,7 +1849,7 @@ const TripPlanner = () => {
                   deleteItineraryMutation={deleteItineraryMutation}
                   setExpenseDetailModal={setExpenseDetailModal}
                   setExpenseListModal={setExpenseListModal}
-                  handleMoveToCategory={handleMoveToCategory}
+                  handleMoveToDay={handleMoveToDay}
                   setIsItineraryDrawerOpen={setIsItineraryDrawerOpen}
                   expensesByItinerary={expensesByItinerary}
                   isMobile={isMobile}
@@ -1942,36 +1877,13 @@ const TripPlanner = () => {
                           일별 정산 보기
                         </Button>
 
-                        <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground font-medium">빠른 카테고리 추가</p>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { name: '식사', bgColor: 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-950 dark:hover:bg-rose-900', textColor: 'text-rose-700 dark:text-rose-300' },
-                              { name: '숙소', bgColor: 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900', textColor: 'text-amber-700 dark:text-amber-300' },
-                              { name: '관광', bgColor: 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 dark:hover:bg-emerald-900', textColor: 'text-emerald-700 dark:text-emerald-300' },
-                              { name: '쇼핑', bgColor: 'bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900', textColor: 'text-sky-700 dark:text-sky-300' },
-                              { name: '액티비티', bgColor: 'bg-purple-100 hover:bg-purple-200 dark:bg-purple-950 dark:hover:bg-purple-900', textColor: 'text-purple-700 dark:text-purple-300' },
-                            ].map(({ name, bgColor, textColor }) => (
-                              <Button
-                                key={name}
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleQuickAddCategory(day, name)}
-                                className={`text-xs ${bgColor} ${textColor}`}
-                              >
-                                {name}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
                         <Button
                           variant="outline"
                           onClick={() => handleAddCategory(day)}
                           className="w-full"
                         >
                           <Plus className="w-4 h-4 mr-2" />
-                          직접 입력
+                          일정 추가
                         </Button>
                       </TabsContent>
                     );
@@ -1996,7 +1908,7 @@ const TripPlanner = () => {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs">
-                      <p>카테고리와 일정을 드래그하여 순서를 변경할 수 있습니다</p>
+                      <p>일정을 드래그하여 날짜별 순서를 변경할 수 있습니다</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -2023,39 +1935,39 @@ const TripPlanner = () => {
                 </TabsList>
 
                 {Array.from({ length: totalDays }, (_, i) => i + 1).map((day) => {
-                  const dayCategories = categories.filter(cat => cat.day === day);
+                  const dayCategories = daySections.filter(cat => cat.day === day);
 
                   return (
                     <TabsContent key={day} value={String(day)} className="mt-3 md:mt-4 space-y-3 md:space-y-4">
                       <DndContext
                         sensors={sensors}
                         collisionDetection={closestCenter}
-                        onDragEnd={(event) => handleCategoryDragEnd(event, day)}
+                        onDragEnd={(event) => handleDaySectionDragEnd(event, day)}
                       >
                         <SortableContext
-                          items={dayCategories.map(cat => cat.categoryId)}
+                          items={dayCategories.map(cat => cat.visitDay)}
                           strategy={verticalListSortingStrategy}
                         >
           <div className="space-y-3 md:space-y-4">
-            {dayCategories.map((category, categoryIndex) => (
-              <SortableCategory
-                key={category.categoryId}
-                category={category}
-                categoryIndex={categoryIndex}
-                categoriesArray={dayCategories}
+            {dayCategories.map((daySection, daySectionIndex) => (
+              <SortableDaySection
+                key={daySection.visitDay}
+                daySection={daySection}
+                daySectionIndex={daySectionIndex}
+                daySectionsArray={dayCategories}
                 day={day}
-                categories={categories}
-                dropTargetCategoryId={dropTargetCategoryId}
+                daySections={daySections}
+                dropTargetVisitDay={dropTargetVisitDay}
                 draggedItinerary={draggedItinerary}
                 dragOverItemId={dragOverItemId}
                 mapRef={mapRef}
                 findRoutesForItems={findRoutesForItems}
-                handleCategoryDragOver={handleCategoryDragOver}
+                handleDaySectionDragOver={handleDaySectionDragOver}
                 handleDragOver={handleDragOver}
                 handleDragLeave={handleDragLeave}
                 handleDrop={handleDrop}
-                handleUpdateCategoryName={handleUpdateCategoryName}
-                handleDeleteCategory={handleDeleteCategory}
+                handleUpdateDaySectionName={handleUpdateCategoryName}
+                handleDeleteDaySection={handleDeleteCategory}
                 handleItineraryDragStart={handleItineraryDragStart}
                 handleItineraryDragOver={handleItineraryDragOver}
                 handleDragEnd={handleDragEnd}
@@ -2064,7 +1976,7 @@ const TripPlanner = () => {
                 deleteItineraryMutation={deleteItineraryMutation}
                 setExpenseDetailModal={setExpenseDetailModal}
                 setExpenseListModal={setExpenseListModal}
-                handleMoveToCategory={handleMoveToCategory}
+                handleMoveToDay={handleMoveToDay}
                 expensesByItinerary={expensesByItinerary}
                 isMobile={isMobile}
                 onMoveItemUp={handleMoveItemUp}
@@ -2091,36 +2003,13 @@ const TripPlanner = () => {
                         일별 정산 보기
                       </Button>
 
-                      <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground font-medium">빠른 카테고리 추가</p>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { name: '식사', bgColor: 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-950 dark:hover:bg-rose-900', textColor: 'text-rose-700 dark:text-rose-300' },
-                            { name: '숙소', bgColor: 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900', textColor: 'text-amber-700 dark:text-amber-300' },
-                            { name: '관광', bgColor: 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 dark:hover:bg-emerald-900', textColor: 'text-emerald-700 dark:text-emerald-300' },
-                            { name: '쇼핑', bgColor: 'bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900', textColor: 'text-sky-700 dark:text-sky-300' },
-                            { name: '액티비티', bgColor: 'bg-purple-100 hover:bg-purple-200 dark:bg-purple-950 dark:hover:bg-purple-900', textColor: 'text-purple-700 dark:text-purple-300' },
-                          ].map(({ name, bgColor, textColor }) => (
-                            <Button
-                              key={name}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleQuickAddCategory(day, name)}
-                              className={`text-xs ${bgColor} ${textColor}`}
-                            >
-                              {name}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
                       <Button
                         variant="outline"
                         onClick={() => handleAddCategory(day)}
                         className="w-full"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        직접 입력
+                        일정 추가
                       </Button>
                     </TabsContent>
                   );
@@ -2135,8 +2024,8 @@ const TripPlanner = () => {
           <ItineraryMap
             key={selectedDay}
             ref={mapRef}
-            categories={categories.filter(cat => cat.day === selectedDay)}
-            getCategoryColor={getCategoryColor}
+            items={itineraryItems.filter(item => item.visitDay === selectedDay)}
+            days={Array.from({ length: totalDays }, (_, index) => index + 1)}
             wishlistItems={wishlistItems}
             tripCountry={tripDetail?.country}
             onAddToItinerary={handleAddWishlistToItinerary}
@@ -2249,17 +2138,17 @@ const TripPlanner = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                              카테고리로 이동
+                              날짜로 이동
                             </div>
                             <DropdownMenuSeparator />
                             <div className="overflow-auto max-h-[20vh]">
-                              {categories
+                              {daySections
                                   .map(category => (
                                       <DropdownMenuItem
-                                          key={category.categoryId}
+                                          key={category.visitDay}
                                           onClick={() => {
                                             addItineraryMutation.mutate({
-                                              categoryId: category.categoryId,
+                                              visitDay: category.visitDay,
                                               data: {
                                                 placeId: Number(item.placeId) || null,
                                                 title: null,
@@ -2272,9 +2161,9 @@ const TripPlanner = () => {
                                         <span>Day{category.day}: {category.name}</span>
                                       </DropdownMenuItem>
                                   ))}
-                              {categories.length === 0 && (
+                              {daySections.length === 0 && (
                                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                    카테고리를 먼저 추가하세요
+                                    날짜를 선택하세요
                                   </div>
                               )}
                             </div>
@@ -2407,17 +2296,17 @@ const TripPlanner = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                              카테고리로 이동
+                              날짜로 이동
                             </div>
                             <DropdownMenuSeparator />
                             <div className="overflow-auto max-h-[20vh]">
-                              {categories
+                              {daySections
                                   .map(category => (
                                       <DropdownMenuItem
-                                          key={category.categoryId}
+                                          key={category.visitDay}
                                           onClick={() => {
                                             addItineraryMutation.mutate({
-                                              categoryId: category.categoryId,
+                                              visitDay: category.visitDay,
                                               data: {
                                                 placeId: Number(item.placeId) || null,
                                                 title: null,
@@ -2430,9 +2319,9 @@ const TripPlanner = () => {
                                         <span>{category.name} (Day {category.day})</span>
                                       </DropdownMenuItem>
                                   ))}
-                              {categories.length === 0 && (
+                              {daySections.length === 0 && (
                                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                    카테고리를 먼저 추가하세요
+                                    날짜를 선택하세요
                                   </div>
                               )}
                             </div>
@@ -2491,14 +2380,14 @@ const TripPlanner = () => {
       {/* Itinerary Create Modal */}
       <ItineraryCreateModal
         isOpen={createItineraryModal.isOpen}
-        onClose={() => setCreateItineraryModal({ isOpen: false, categoryId: 0, categoryName: "" })}
+        onClose={() => setCreateItineraryModal({ isOpen: false, visitDay: 0, dayLabel: "" })}
         onCreateItinerary={(data) => {
           addItineraryMutation.mutate({
-            categoryId: createItineraryModal.categoryId,
+            visitDay: createItineraryModal.visitDay,
             data,
           });
         }}
-        categoryName={createItineraryModal.categoryName}
+        dayLabel={createItineraryModal.dayLabel}
         tripStartDate={tripDetail?.startDate || ""}
         currentDay={selectedDay}
       />
@@ -2540,6 +2429,8 @@ const TripPlanner = () => {
         open={showReviewModal}
         onOpenChange={setShowReviewModal}
         tripId={Number(tripId)}
+        tripStartDate={tripDetail?.startDate}
+        tripEndDate={tripDetail?.endDate}
       />
 
       {/* Expense Detail Modal */}
@@ -2552,8 +2443,8 @@ const TripPlanner = () => {
           // Close detail modal and open edit modal
           setExpenseDetailModal({ isOpen: false, expenseId: null });
           
-          // Find the itinerary item for this expense by searching through categories
-          const itineraryItem = categories
+          // Find the itinerary item for this expense by searching through daySections
+          const itineraryItem = daySections
             .flatMap(cat => cat.itineraryItems)
             .find(item => item.itineraryId === expense.expenseId); // This needs to be adjusted based on actual data structure
           
@@ -2669,7 +2560,7 @@ const TripPlanner = () => {
                 <Button
                   onClick={() => {
                     updateItineraryMutation.mutate({
-                      categoryId: editingItinerary.categoryId,
+                      visitDay: editingItinerary.visitDay,
                       itemId: editingItinerary.itemId,
                       updates: {
                         time: editingItinerary.time || undefined,

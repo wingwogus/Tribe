@@ -75,12 +75,8 @@ export const useTripWebSocket = ({
 
       switch (data.type) {
         case "ITINERARY":
-          queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(normalizedTripId) });
+          queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(normalizedTripId) });
           queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(normalizedTripId) });
-          break;
-
-        case "CATEGORY":
-          queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(normalizedTripId) });
           break;
 
         case "WISHLIST":

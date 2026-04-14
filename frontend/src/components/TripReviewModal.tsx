@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { wishlistApi } from "@/api/wishlist";
-import { categoryApi } from "@/api/categories";
-import { itineraryApi } from "@/api/itinerary";
+import { fetchAllItinerariesForTrip, itineraryApi } from "@/api/itinerary";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlaceSearchResult } from "@/api/places";
 import { tripQueryKeys } from "@/lib/tripQueryKeys";
@@ -22,21 +21,23 @@ interface TripReviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tripId: number;
+  tripStartDate?: string;
+  tripEndDate?: string;
 }
 
-export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalProps) => {
+export const TripReviewModal = ({ open, onOpenChange, tripId, tripStartDate, tripEndDate }: TripReviewModalProps) => {
   const queryClient = useQueryClient();
   const [concept, setConcept] = useState("");
   const [activeTab, setActiveTab] = useState("new");
   const [selectedReviewId, setSelectedReviewId] = useState<number | null>(null);
   const [newReview, setNewReview] = useState<TripReview | null>(null);
   const [addingToItinerary, setAddingToItinerary] = useState<PlaceSearchResult | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [selectedVisitDay, setSelectedVisitDay] = useState<string>("");
 
-  // 카테고리 목록 조회
-  const { data: categories = [] } = useQuery({
-    queryKey: tripQueryKeys.categories(tripId),
-    queryFn: () => categoryApi.getCategories(tripId),
+  // itinerary 목록 조회
+  const { data: itineraryItems = [] } = useQuery({
+    queryKey: tripQueryKeys.itinerary(tripId),
+    queryFn: () => fetchAllItinerariesForTrip(tripId),
     enabled: open,
   });
 
@@ -95,7 +96,7 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
     setSelectedReviewId(null);
     setActiveTab("new");
     setAddingToItinerary(null);
-    setSelectedCategoryId("");
+    setSelectedVisitDay("");
     onOpenChange(false);
   };
 
@@ -127,21 +128,22 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
 
   // 일정에 추가 Mutation
   const addToItineraryMutation = useMutation({
-    mutationFn: ({ categoryId, placeId }: { categoryId: number; placeId?: number }) =>
-      itineraryApi.createItinerary(tripId, categoryId, {
+    mutationFn: ({ visitDay, placeId }: { visitDay: number; placeId?: number }) =>
+      itineraryApi.createItinerary(tripId, visitDay, {
+        visitDay,
         placeId: placeId || null,
         title: null,
         time: null,
         memo: null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.categories(tripId) });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId) });
       toast({
         title: "일정에 추가됨",
         description: "장소가 일정에 추가되었습니다.",
       });
       setAddingToItinerary(null);
-      setSelectedCategoryId("");
+      setSelectedVisitDay("");
     },
     onError: () => {
       toast({
@@ -161,12 +163,23 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
   };
 
   const handleConfirmAddToItinerary = () => {
-    if (!addingToItinerary || !selectedCategoryId) return;
+    if (!addingToItinerary || !selectedVisitDay) return;
     addToItineraryMutation.mutate({
-      categoryId: parseInt(selectedCategoryId),
+      visitDay: parseInt(selectedVisitDay),
       placeId: addingToItinerary.placeId,
     });
   };
+
+  const availableDays = useMemo(() => {
+    if (tripStartDate && tripEndDate) {
+      const diff = Math.ceil(
+        (new Date(tripEndDate).getTime() - new Date(tripStartDate).getTime()) / (1000 * 60 * 60 * 24),
+      ) + 1;
+      return Array.from({ length: Math.max(diff, 0) }, (_, index) => index + 1);
+    }
+
+    return [...new Set(itineraryItems.map((item) => item.visitDay))].sort((a, b) => a - b);
+  }, [itineraryItems, tripEndDate, tripStartDate]);
 
   const renderReviewContent = (reviewData: TripReview) => (
     <div className="space-y-6 animate-fade-in">
@@ -447,10 +460,10 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
           </div>
         )}
 
-        {/* 일정 추가 카테고리 선택 모달 */}
+        {/* 일정 추가 날짜 선택 모달 */}
         <Dialog open={!!addingToItinerary} onOpenChange={() => {
           setAddingToItinerary(null);
-          setSelectedCategoryId("");
+          setSelectedVisitDay("");
         }}>
           <DialogContent>
             <DialogHeader>
@@ -462,14 +475,14 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>날짜 선택</Label>
-                <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                <Select value={selectedVisitDay} onValueChange={setSelectedVisitDay}>
                   <SelectTrigger>
                     <SelectValue placeholder="날짜를 선택하세요" />
                   </SelectTrigger>
                   <SelectContent className="max-h-48 overflow-y-auto">
-              {categories.map((category) => (
-                <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
-                  {category.name} (Day {category.day})
+              {availableDays.map((visitDay) => (
+                <SelectItem key={visitDay} value={visitDay.toString()}>
+                  Day {visitDay}
                 </SelectItem>
               ))}
                   </SelectContent>
@@ -481,14 +494,14 @@ export const TripReviewModal = ({ open, onOpenChange, tripId }: TripReviewModalP
                 variant="outline"
                 onClick={() => {
                   setAddingToItinerary(null);
-                  setSelectedCategoryId("");
+                  setSelectedVisitDay("");
                 }}
               >
                 취소
               </Button>
               <Button
                 onClick={handleConfirmAddToItinerary}
-                disabled={!selectedCategoryId || addToItineraryMutation.isPending}
+                disabled={!selectedVisitDay || addToItineraryMutation.isPending}
               >
                 {addToItineraryMutation.isPending ? (
                   <>

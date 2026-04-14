@@ -6,7 +6,6 @@ import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.member.TripMemberIntegrityService
 import com.tribe.domain.community.CommunityPost
 import com.tribe.domain.community.CommunityPostRepository
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
@@ -110,10 +109,8 @@ class TripServiceTest {
     fun `importTrip clones categories and itinerary items`() {
         val member = Member(id = 1L, email = "user@example.com", passwordHash = "hashed", nickname = "tribe")
         val originalTrip = Trip("Original", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN)
-        val category = Category(originalTrip, 1, "Day1", 1)
-        val item = ItineraryItem(category, null, "Dinner", null, 1, "memo")
-        category.itineraryItems.add(item)
-        originalTrip.categories.add(category)
+        val item = ItineraryItem(originalTrip, 1, null, "Dinner", null, 1, "memo")
+        originalTrip.itineraryItems.add(item)
         val post = CommunityPost(member, originalTrip, "Post", "Content", null)
 
         `when`(currentActor.requireUserId()).thenReturn(1L)

@@ -9,7 +9,6 @@ import com.tribe.domain.expense.ExpenseCategory
 import com.tribe.domain.expense.ExpenseItem
 import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.trip.core.Trip
 import com.tribe.domain.trip.member.TripMember
@@ -250,9 +249,7 @@ class ExpenseServiceTest {
         trip.members.add(payerMembership)
         trip.members.add(memberMembership)
 
-        val category = Category(trip, 1, "Meals", 1)
-        ReflectionTestUtils.setField(category, "id", 21L)
-        val itineraryItem = ItineraryItem(category, null, "Dinner", null, 1, null)
+        val itineraryItem = ItineraryItem(trip, 1, null, "Dinner", null, 1, null)
         ReflectionTestUtils.setField(itineraryItem, "id", 1L)
 
         return ExpenseFixture(trip, actor, payerMembership, memberMembership, itineraryItem)

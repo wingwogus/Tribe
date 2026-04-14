@@ -1,7 +1,6 @@
 export type TripRealtimeEventType =
   | "TRIP_LIFECYCLE"
   | "TRIP_MEMBER"
-  | "CATEGORY"
   | "ITINERARY"
   | "WISHLIST";
 
@@ -11,7 +10,6 @@ export interface TripRealtimeEvent<T = unknown> {
   actorId: number;
   lifecycle?: T;
   member?: T;
-  category?: T;
   itinerary?: T;
   wishlist?: T;
 }

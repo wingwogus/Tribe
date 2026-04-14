@@ -1,7 +1,7 @@
 import {forwardRef, useEffect, useImperativeHandle, useRef, useState} from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import {CategoryResponse} from '@/api/categories';
+import {ItineraryResponse} from '@/api/itinerary';
 import {WishlistItem} from '@/api/wishlist';
 import {getCountryCoordinates} from '@/lib/countryCoordinates';
 
@@ -11,17 +11,22 @@ export interface ItineraryMapHandle {
 }
 
 interface ItineraryMapProps {
-    categories: CategoryResponse[];
-    getCategoryColor: (categoryName: string) => { bg: string; text: string; marker: string };
+    items?: ItineraryResponse[];
+    days?: number[];
     wishlistItems?: WishlistItem[];
     tripCountry?: string;
-    onAddToItinerary?: (wishlistItem: WishlistItem, categoryId: number) => void;
-    onDeleteItinerary?: (itineraryId: number, categoryId: number) => void;
+    onAddToItinerary?: (wishlistItem: WishlistItem, visitDay: number) => void;
+    onDeleteItinerary?: (itineraryId: number, visitDay: number) => void;
     onDeleteWishlist?: (wishlistItemId: number) => void;
 }
 
+const getDayMarkerColor = (visitDay: number): string => {
+    const palette = ['#FB7185', '#FBBF24', '#34D399', '#38BDF8', '#A78BFA', '#94A3B8'];
+    return palette[(Math.max(visitDay, 1) - 1) % palette.length];
+};
+
 export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
-    ({categories, getCategoryColor, wishlistItems = [], tripCountry, onAddToItinerary, onDeleteItinerary, onDeleteWishlist}, ref) => {
+    ({items = [], days = [], wishlistItems = [], tripCountry, onAddToItinerary, onDeleteItinerary, onDeleteWishlist}, ref) => {
         const mapContainer = useRef<HTMLDivElement>(null);
         const map = useRef<L.Map | null>(null);
         const markersMap = useRef<Map<number, L.Marker>>(new Map());
@@ -55,14 +60,8 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             },
         }));
 
-        // Sort categories by order, then flatten itineraries with category info
-        const validItineraries = categories
-            .sort((a, b) => a.order - b.order)
-            .flatMap(category =>
-                (category.itineraryItems || [])
-                    .sort((a, b) => a.order - b.order)
-                    .map(item => ({...item, categoryName: category.name}))
-            )
+        const validItineraries = [...items]
+            .sort((a, b) => a.visitDay - b.visitDay || a.itemOrder - b.itemOrder)
             .filter(item => item.location && item.location.lat && item.location.lng);
 
     // Effect for map initialization and destruction
@@ -113,8 +112,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     const latLng: L.LatLngExpression = [item.location.lat, item.location.lng];
                     latLngs.push(latLng);
 
-                    // Get category color
-                    const categoryColor = getCategoryColor(item.categoryName);
+                    const markerColor = getDayMarkerColor(item.visitDay);
 
                     // Create custom icon with number and category color
                     const icon = L.divIcon({
@@ -124,7 +122,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                             width: 24px;
                             height: 24px;
                             border-radius: 50%;
-                            background-color: ${categoryColor.marker};
+                            background-color: ${markerColor};
                             border: 3px solid white;
                             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                             display: flex;
@@ -158,7 +156,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                                                 <button 
                                                     class="itinerary-delete-btn" 
                                                     data-itinerary-id="${item.itineraryId}"
-                                                    data-category-id="${item.categoryId}"
+                                                    data-visit-day="${item.visitDay}"
                                                     style="
                                                         background: none;
                                                         border: none;
@@ -205,10 +203,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                                 
                                 if (deleteBtn) {
                                     const itineraryId = parseInt(deleteBtn.getAttribute('data-itinerary-id')!);
-                                    const categoryId = parseInt(deleteBtn.getAttribute('data-category-id')!);
+                                    const visitDay = parseInt(deleteBtn.getAttribute('data-visit-day')!);
                                     
                                     if (onDeleteItinerary) {
-                                        onDeleteItinerary(itineraryId, categoryId);
+                                        onDeleteItinerary(itineraryId, visitDay);
                                     }
                                 }
                             };
@@ -240,7 +238,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     setHasInitialFit(true);
                 }
             }
-        }, [validItineraries, getCategoryColor]);
+        }, [validItineraries]);
 
         // Effect for wishlist markers
         useEffect(() => {
@@ -249,6 +247,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             // Clear existing wishlist markers
             wishlistMarkersMap.current.forEach(marker => marker.remove());
             wishlistMarkersMap.current.clear();
+
+            const availableDays = days.length > 0
+                ? [...days].sort((a, b) => a - b)
+                : [...new Set(items.map((item) => item.visitDay))].sort((a, b) => a - b);
 
             if (wishlistItems && wishlistItems.length > 0) {
                 wishlistItems.forEach((item) => {
@@ -267,10 +269,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                         iconAnchor: [12, 12],
                     });
 
-                    // Create category dropdown HTML for popup
-                    const categoriesHtml = `
+                    // Create day dropdown HTML for popup
+                    const itineraryDaysHtml = `
                         <select 
-                            class="wishlist-category-select" 
+                            class="wishlist-day-select" 
                             data-wishlist-id="${item.wishlistItemId}"
                             style="
                                 width: 100%;
@@ -285,10 +287,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                             onfocus="this.style.borderColor='#3b82f6'"
                             onblur="this.style.borderColor='#e5e7eb'"
                         >
-                            <option value="" selected disabled>일정을 선택하세요</option>
-                            ${categories.map(cat => `
-                                <option value="${cat.categoryId}">
-                                    ${cat.name} (Day ${cat.day})
+                            <option value="" selected disabled>날짜를 선택하세요</option>
+                            ${availableDays.map(day => `
+                                <option value="${day}">
+                                    Day ${day}
                                 </option>
                             `).join('')}
                         </select>
@@ -346,7 +348,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                                     일정에 추가:
                                 </p>
                                 <div style="max-height: 200px; overflow-y: auto;">
-                                    ${categoriesHtml}
+                                    ${itineraryDaysHtml}
                                 </div>
                             </div>
                         </div>
@@ -365,13 +367,13 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                                 
                                 // 일정 선택 드롭다운
                                 const selectElement = target as HTMLSelectElement;
-                                if (selectElement.classList.contains('wishlist-category-select') && selectElement.value) {
+                                if (selectElement.classList.contains('wishlist-day-select') && selectElement.value) {
                                     const wishlistId = parseInt(selectElement.getAttribute('data-wishlist-id')!);
-                                    const categoryId = parseInt(selectElement.value);
+                                    const visitDay = parseInt(selectElement.value);
                                     const wishlistItem = wishlistItems.find(item => item.wishlistItemId === wishlistId);
 
                                     if (wishlistItem && onAddToItinerary) {
-                                        onAddToItinerary(wishlistItem, categoryId);
+                                        onAddToItinerary(wishlistItem, visitDay);
                                         // 추가 후 드롭다운 초기화
                                         selectElement.value = '';
                                     }
@@ -399,7 +401,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                 wishlistMarkersMap.current.set(item.wishlistItemId, wishlistMarker);
             });
             }
-        }, [wishlistItems, categories, onAddToItinerary]);
+        }, [wishlistItems, items, days, onAddToItinerary]);
 
         return (
             <div className="relative w-full h-full rounded-lg overflow-hidden shadow-soft z-0">

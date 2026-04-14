@@ -314,7 +314,7 @@ class ExpenseService(
         if (itineraryItemId == null) return null
         val itineraryItem = itineraryItemRepository.findById(itineraryItemId)
             .orElseThrow { BusinessException(ErrorCode.ITEM_NOT_FOUND) }
-        if (itineraryItem.category.trip.id != tripId) {
+        if (itineraryItem.trip.id != tripId) {
             throw BusinessException(ErrorCode.NO_BELONG_TRIP)
         }
         return itineraryItem

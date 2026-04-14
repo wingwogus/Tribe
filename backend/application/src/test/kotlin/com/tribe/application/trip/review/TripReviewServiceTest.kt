@@ -5,7 +5,6 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.itinerary.place.PlaceSearchResult
 import com.tribe.application.itinerary.place.PlaceSearchService
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceRepository
@@ -112,10 +111,8 @@ class TripReviewServiceTest {
     private fun tripFixture(): Trip {
         val trip = Trip("테스트 여행", LocalDate.now(), LocalDate.now().plusDays(5), Country.JAPAN)
         ReflectionTestUtils.setField(trip, "id", 5L)
-        val category = Category(trip, 1, "Day 1", 1)
         val place = Place("seed", "도톤보리", "오사카", BigDecimal.ZERO, BigDecimal.ZERO)
-        category.itineraryItems.add(ItineraryItem(category, place, null, null, 1, null))
-        trip.categories.add(category)
+        trip.itineraryItems.add(ItineraryItem(trip, 1, place, null, null, 1, null))
         return trip
     }
 }

@@ -1,7 +1,7 @@
 package com.tribe.domain.itinerary.item
 
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.trip.core.Trip
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType
@@ -16,8 +16,10 @@ import java.time.LocalDateTime
 @Entity
 class ItineraryItem(
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
-    var category: Category,
+    @JoinColumn(name = "trip_id", nullable = false)
+    var trip: Trip,
+    @Column(name = "visit_day", nullable = false)
+    var visitDay: Int,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "place_id")
     var place: Place?,

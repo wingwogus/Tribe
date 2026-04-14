@@ -5,7 +5,7 @@ import java.time.LocalDateTime
 object ItemCommand {
     data class Create(
         val tripId: Long,
-        val categoryId: Long,
+        val visitDay: Int,
         val placeId: Long? = null,
         val title: String? = null,
         val time: LocalDateTime? = null,
@@ -15,7 +15,7 @@ object ItemCommand {
     data class Update(
         val tripId: Long,
         val itemId: Long,
-        val categoryId: Long? = null,
+        val visitDay: Int? = null,
         val title: String? = null,
         val time: LocalDateTime? = null,
         val memo: String? = null,
@@ -28,7 +28,7 @@ object ItemCommand {
 
     data class OrderItem(
         val itemId: Long,
-        val categoryId: Long,
-        val order: Int,
+        val visitDay: Int,
+        val itemOrder: Int,
     )
 }

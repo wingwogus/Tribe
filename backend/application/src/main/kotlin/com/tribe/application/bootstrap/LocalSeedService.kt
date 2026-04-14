@@ -7,7 +7,6 @@ import com.tribe.domain.expense.ExpenseItem
 import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
 import com.tribe.domain.expense.InputMethod
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceRepository
@@ -77,8 +76,6 @@ class LocalSeedService(
         val ownerMembership = trip.addMember(owner, TripRole.OWNER)
         val memberMembership = trip.addMember(member, TripRole.MEMBER)
 
-        val breakfast = Category(trip, 1, "Breakfast", 1)
-        val dinner = Category(trip, 1, "Dinner", 2)
         val place = placeRepository.save(
             Place(
                 externalPlaceId = "seed-place-1",
@@ -88,11 +85,9 @@ class LocalSeedService(
                 longitude = BigDecimal("135.5013"),
             ),
         )
-        breakfast.memo = "Seed breakfast plan"
-        dinner.memo = "Seed dinner plan"
-
         val breakfastItem = ItineraryItem(
-            category = breakfast,
+            trip = trip,
+            visitDay = 1,
             place = null,
             title = "호텔 조식",
             time = LocalDateTime.now().withHour(8).withMinute(0),
@@ -100,7 +95,8 @@ class LocalSeedService(
             memo = "뷔페",
         )
         val dinnerItem = ItineraryItem(
-            category = dinner,
+            trip = trip,
+            visitDay = 1,
             place = place,
             title = null,
             time = LocalDateTime.now().withHour(19).withMinute(0),
@@ -108,10 +104,8 @@ class LocalSeedService(
             memo = "라멘",
         )
 
-        breakfast.itineraryItems.add(breakfastItem)
-        dinner.itineraryItems.add(dinnerItem)
-        trip.categories.add(breakfast)
-        trip.categories.add(dinner)
+        trip.itineraryItems.add(breakfastItem)
+        trip.itineraryItems.add(dinnerItem)
         trip.wishlistItems.add(WishlistItem(trip, place, ownerMembership))
 
         val expense = Expense(

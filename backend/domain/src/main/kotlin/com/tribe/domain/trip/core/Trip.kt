@@ -1,7 +1,7 @@
 package com.tribe.domain.trip.core
 
 import com.tribe.domain.chat.ChatMessage
-import com.tribe.domain.itinerary.category.Category
+import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.wishlist.WishlistItem
 import com.tribe.domain.member.Member
 import com.tribe.domain.trip.member.TripMember
@@ -40,7 +40,7 @@ class Trip(
     val members: MutableList<TripMember> = mutableListOf()
 
     @OneToMany(mappedBy = "trip", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val categories: MutableList<Category> = mutableListOf()
+    val itineraryItems: MutableList<ItineraryItem> = mutableListOf()
 
     @OneToMany(mappedBy = "trip", cascade = [CascadeType.ALL], orphanRemoval = true)
     val wishlistItems: MutableList<WishlistItem> = mutableListOf()

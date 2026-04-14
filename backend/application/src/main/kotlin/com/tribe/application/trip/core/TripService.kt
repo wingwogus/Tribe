@@ -14,7 +14,6 @@ import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.event.TripSummary
 import com.tribe.domain.community.CommunityPostRepository
-import com.tribe.domain.itinerary.category.Category
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.member.MemberRepository
@@ -196,28 +195,18 @@ class TripService(
         )
         importTrip.addMember(member, TripRole.OWNER)
 
-        originalTrip.categories.forEach { originalCategory ->
-            val importCategory = Category(
-                trip = importTrip,
-                day = originalCategory.day,
-                name = originalCategory.name,
-                order = originalCategory.order,
-            ).also {
-                it.memo = originalCategory.memo
-            }
-
-            originalCategory.itineraryItems.mapTo(importCategory.itineraryItems) { originalItem ->
+        originalTrip.itineraryItems
+            .sortedWith(compareBy(ItineraryItem::visitDay, ItineraryItem::order))
+            .mapTo(importTrip.itineraryItems) { originalItem ->
                 ItineraryItem(
-                    category = importCategory,
+                    trip = importTrip,
+                    visitDay = originalItem.visitDay,
                     place = originalItem.place,
                     title = originalItem.title,
                     time = originalItem.time,
                     order = originalItem.order,
                     memo = originalItem.memo,
                 )
-            }
-
-            importTrip.categories.add(importCategory)
         }
 
         val result = TripResult.TripDetail.from(tripRepository.save(importTrip))

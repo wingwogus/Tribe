@@ -1,6 +1,5 @@
 package com.tribe.application.trip.event
 
-import com.tribe.application.itinerary.category.CategoryResult
 import com.tribe.application.itinerary.item.ItemResult
 import com.tribe.application.itinerary.wishlist.WishlistResult
 import com.tribe.application.trip.core.TripResult
@@ -9,7 +8,6 @@ import java.time.LocalDate
 enum class TripRealtimeEventType {
     TRIP_LIFECYCLE,
     TRIP_MEMBER,
-    CATEGORY,
     ITINERARY,
     WISHLIST,
 }
@@ -20,7 +18,6 @@ data class TripRealtimeEvent(
     val actorId: Long,
     val lifecycle: TripLifecycleEvent? = null,
     val member: TripMemberEvent? = null,
-    val category: CategoryEvent? = null,
     val itinerary: ItineraryEvent? = null,
     val wishlist: WishlistEvent? = null,
 )
@@ -70,25 +67,12 @@ data class TripMemberEvent(
     val member: TripResult.MemberSummary,
 )
 
-enum class CategoryAction {
-    CREATED,
-    UPDATED,
-    DELETED,
-    REORDERED,
-}
-
-data class CategoryEvent(
-    val action: CategoryAction,
-    val category: CategoryResult.CategoryView? = null,
-    val categories: List<CategoryResult.CategoryView>? = null,
-    val deletedCategoryId: Long? = null,
-)
-
 enum class ItineraryAction {
-    CREATED,
-    UPDATED,
-    DELETED,
-    REORDERED,
+    ITEM_CREATED,
+    ITEM_UPDATED,
+    ITEM_DELETED,
+    ITEM_REORDERED,
+    ITEM_MOVED_DAY,
 }
 
 data class ItineraryEvent(
@@ -96,7 +80,14 @@ data class ItineraryEvent(
     val item: ItemResult.ItemView? = null,
     val items: List<ItemResult.ItemView>? = null,
     val deletedItemId: Long? = null,
-)
+    val orderChanges: List<OrderChange>? = null,
+) {
+    data class OrderChange(
+        val itemId: Long,
+        val visitDay: Int,
+        val itemOrder: Int,
+    )
+}
 
 enum class WishlistAction {
     ADDED,

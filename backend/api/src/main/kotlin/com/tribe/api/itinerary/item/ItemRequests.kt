@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 
 object ItemRequests {
     data class CreateRequest(
-        val categoryId: Long,
+        val visitDay: Int,
         val placeId: Long? = null,
         val title: String? = null,
         val time: LocalDateTime? = null,
@@ -12,7 +12,7 @@ object ItemRequests {
     )
 
     data class UpdateRequest(
-        val categoryId: Long? = null,
+        val visitDay: Int? = null,
         val title: String? = null,
         val time: LocalDateTime? = null,
         val memo: String? = null,
@@ -24,7 +24,7 @@ object ItemRequests {
 
     data class OrderItemRequest(
         val itemId: Long,
-        val categoryId: Long,
-        val order: Int,
+        val visitDay: Int,
+        val itemOrder: Int,
     )
 }

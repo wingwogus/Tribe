@@ -39,7 +39,7 @@ class ItemControllerTest(
             itemService.createItem(
                 ItemCommand.Create(
                     tripId = 5L,
-                    categoryId = 11L,
+                    visitDay = 1,
                     title = "Dinner",
                     time = LocalDateTime.of(2026, 4, 12, 19, 0),
                     memo = "Booked",
@@ -53,7 +53,7 @@ class ItemControllerTest(
                 .content(
                     """
                     {
-                      "categoryId": 11,
+                      "visitDay": 1,
                       "title": "Dinner",
                       "time": "2026-04-12T19:00:00",
                       "memo": "Booked"
@@ -64,7 +64,7 @@ class ItemControllerTest(
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.itemId", equalTo(1)))
-            .andExpect(jsonPath("$.data.categoryId", equalTo(11)))
+            .andExpect(jsonPath("$.data.visitDay", equalTo(1)))
     }
 
     @Test
@@ -84,19 +84,25 @@ class ItemControllerTest(
             itemService.updateItemOrder(
                 ItemCommand.OrderUpdate(
                     tripId = 5L,
-                    items = listOf(ItemCommand.OrderItem(1L, 12L, 2)),
+                    items = listOf(
+                        ItemCommand.OrderItem(
+                            itemId = 1L,
+                            visitDay = 2,
+                            itemOrder = 2,
+                        ),
+                    ),
                 ),
             ),
-        ).thenReturn(listOf(sampleItemView(categoryId = 12L, order = 2)))
+        ).thenReturn(listOf(sampleItemView(visitDay = 2, itemOrder = 2)))
 
         mockMvc.perform(
             patch("/api/v1/trips/5/items/order")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"items":[{"itemId":1,"categoryId":12,"order":2}]}"""),
+                .content("""{"items":[{"itemId":1,"visitDay":2,"itemOrder":2}]}"""),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data[0].categoryId", equalTo(12)))
-            .andExpect(jsonPath("$.data[0].order", equalTo(2)))
+            .andExpect(jsonPath("$.data[0].visitDay", equalTo(2)))
+            .andExpect(jsonPath("$.data[0].itemOrder", equalTo(2)))
     }
 
     @Test
@@ -121,20 +127,21 @@ class ItemControllerTest(
     }
 
     private fun sampleItemView(
-        categoryId: Long = 11L,
-        order: Int = 3,
+        visitDay: Int = 1,
+        itemOrder: Int = 3,
     ) = ItemResult.ItemView(
         itemId = 1L,
-        categoryId = categoryId,
-        categoryName = "Meals",
         tripId = 5L,
-        day = 1,
+        visitDay = visitDay,
+        itemOrder = itemOrder,
         placeId = null,
+        externalPlaceId = null,
         name = "Dinner",
         title = "Dinner",
         time = LocalDateTime.of(2026, 4, 12, 19, 0),
-        order = order,
         memo = "Booked",
         location = null,
+        placeTypeSummary = null,
+        openingStatusWarning = null,
     )
 }

@@ -5,19 +5,18 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface ItineraryItemRepository : JpaRepository<ItineraryItem, Long> {
-    fun findByCategoryIdOrderByOrderAsc(categoryId: Long): List<ItineraryItem>
-    fun countByCategoryId(categoryId: Long): Int
+    fun findByTripIdAndVisitDayOrderByOrderAsc(tripId: Long, visitDay: Int): List<ItineraryItem>
+    fun countByTripIdAndVisitDay(tripId: Long, visitDay: Int): Int
 
-    @Query("select i from ItineraryItem i join i.category c where i.id in :itemIds and c.trip.id = :tripId")
+    @Query("select i from ItineraryItem i where i.id in :itemIds and i.trip.id = :tripId")
     fun findByIdInAndTripId(@Param("itemIds") itemIds: List<Long>, @Param("tripId") tripId: Long): List<ItineraryItem>
 
     @Query(
         """
         select i from ItineraryItem i
-        join i.category c
-        where c.trip.id = :tripId
-        order by c.day asc, c.order asc, i.order asc
+        where i.trip.id = :tripId
+        order by i.visitDay asc, i.order asc
         """
     )
-    fun findByTripIdOrderByCategoryAndOrder(@Param("tripId") tripId: Long): List<ItineraryItem>
+    fun findByTripIdOrderByVisitDayAndOrder(@Param("tripId") tripId: Long): List<ItineraryItem>
 }

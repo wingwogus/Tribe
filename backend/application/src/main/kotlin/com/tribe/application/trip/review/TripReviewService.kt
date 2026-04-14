@@ -85,17 +85,14 @@ class TripReviewService(
     }
 
     private fun createPromptFromTrip(trip: com.tribe.domain.trip.core.Trip, concept: String?): String {
-        val itineraryText = trip.categories
-            .groupBy { it.day }
+        val itineraryText = trip.itineraryItems
+            .groupBy { it.visitDay }
             .toSortedMap()
-            .map { (day, categories) ->
+            .map { (day, items) ->
                 buildString {
                     appendLine("- Day $day")
-                    categories.forEach { category ->
-                        appendLine("  - 카테고리: ${category.name}")
-                        category.itineraryItems.forEach { item ->
-                            appendLine("    - 이름: ${item.place?.name ?: item.title}, 주소: ${item.place?.address}")
-                        }
+                    items.sortedBy { it.order }.forEach { item ->
+                        appendLine("  - 이름: ${item.place?.name ?: item.title}, 주소: ${item.place?.address}")
                     }
                 }
             }

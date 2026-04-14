@@ -15,7 +15,7 @@ interface ItineraryCreateModalProps {
     time?: string | null;
     memo?: string | null;
   }) => void;
-  categoryName: string;
+  dayLabel: string;
   tripStartDate: string; // ISO date string (YYYY-MM-DD)
   currentDay: number; // Day number (1, 2, 3, ...)
 }
@@ -24,7 +24,7 @@ export const ItineraryCreateModal = ({
   isOpen,
   onClose,
   onCreateItinerary,
-  categoryName,
+  dayLabel,
   tripStartDate,
   currentDay,
 }: ItineraryCreateModalProps) => {
@@ -81,7 +81,7 @@ export const ItineraryCreateModal = ({
         <DialogHeader>
           <DialogTitle>일정 추가</DialogTitle>
           <DialogDescription>
-            {categoryName}에 새로운 일정을 추가합니다
+            {dayLabel}에 새로운 일정을 추가합니다
           </DialogDescription>
         </DialogHeader>
 

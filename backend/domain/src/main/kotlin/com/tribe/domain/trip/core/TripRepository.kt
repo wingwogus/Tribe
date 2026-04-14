@@ -33,8 +33,7 @@ interface TripRepository : JpaRepository<Trip, Long> {
         """
         select distinct t
         from Trip t
-        left join fetch t.categories c
-        left join fetch c.itineraryItems i
+        left join fetch t.itineraryItems i
         left join fetch i.place p
         where t.id = :tripId
         """

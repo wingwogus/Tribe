@@ -28,7 +28,7 @@ class ItemController(
         val result = itemService.createItem(
             ItemCommand.Create(
                 tripId = tripId,
-                categoryId = request.categoryId,
+                visitDay = request.visitDay,
                 placeId = request.placeId,
                 title = request.title,
                 time = request.time,
@@ -41,9 +41,9 @@ class ItemController(
     @GetMapping
     fun getAllItems(
         @PathVariable tripId: Long,
-        @RequestParam(required = false) categoryId: Long?,
+        @RequestParam(required = false) visitDay: Int?,
     ): ResponseEntity<ApiResponse<List<ItemResponses.ItemResponse>>> {
-        val result = itemService.getAllItems(tripId, categoryId).map(ItemResponses.ItemResponse::from)
+        val result = itemService.getAllItems(tripId, visitDay).map(ItemResponses.ItemResponse::from)
         return ResponseEntity.ok(ApiResponse.ok(result))
     }
 
@@ -66,7 +66,7 @@ class ItemController(
             ItemCommand.Update(
                 tripId = tripId,
                 itemId = itemId,
-                categoryId = request.categoryId,
+                visitDay = request.visitDay,
                 title = request.title,
                 time = request.time,
                 memo = request.memo,
@@ -95,8 +95,8 @@ class ItemController(
                 items = request.items.map {
                     ItemCommand.OrderItem(
                         itemId = it.itemId,
-                        categoryId = it.categoryId,
-                        order = it.order,
+                        visitDay = it.visitDay,
+                        itemOrder = it.itemOrder,
                     )
                 },
             ),

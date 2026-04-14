@@ -11,28 +11,29 @@ import com.tribe.application.trip.event.TripRealtimeEvent
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.core.TripAuthorizationPolicy
-import com.tribe.domain.itinerary.category.Category
-import com.tribe.domain.itinerary.category.CategoryRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.item.ItineraryItemRepository
 import com.tribe.domain.itinerary.place.PlaceRepository
+import com.tribe.domain.trip.core.TripRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 @Transactional
 class ItemService(
-    private val categoryRepository: CategoryRepository,
     private val itineraryItemRepository: ItineraryItemRepository,
     private val placeRepository: PlaceRepository,
     private val placeSearchService: PlaceSearchService,
     private val currentActor: CurrentActor,
     private val tripRealtimeEventPublisher: TripRealtimeEventPublisher,
     private val tripAuthorizationPolicy: TripAuthorizationPolicy,
+    private val tripRepository: TripRepository,
 ) {
     fun createItem(command: ItemCommand.Create): ItemResult.ItemView {
         tripAuthorizationPolicy.isTripMember(command.tripId)
-        val category = findCategory(command.tripId, command.categoryId)
+        val trip = tripRepository.findById(command.tripId)
+            .orElseThrow { BusinessException(ErrorCode.TRIP_NOT_FOUND) }
+        val visitDay = command.visitDay
         val place = command.placeId?.let { placeId ->
             placeRepository.findById(placeId)
                 .orElseThrow { BusinessException(ErrorCode.PLACE_NOT_FOUND) }
@@ -42,11 +43,12 @@ class ItemService(
         }
         val item = itineraryItemRepository.save(
             ItineraryItem(
-                category = category,
+                trip = trip,
+                visitDay = visitDay,
                 place = place,
                 title = if (place != null) null else normalizeNullableText(command.title),
                 time = command.time,
-                order = itineraryItemRepository.countByCategoryId(category.id) + 1,
+                order = itineraryItemRepository.countByTripIdAndVisitDay(command.tripId, visitDay) + 1,
                 memo = normalizeNullableText(command.memo),
             ),
         )
@@ -56,7 +58,7 @@ class ItemService(
                 type = TripRealtimeEventType.ITINERARY,
                 tripId = command.tripId,
                 actorId = currentActor.requireUserId(),
-                itinerary = ItineraryEvent(action = ItineraryAction.CREATED, item = result),
+                itinerary = ItineraryEvent(action = ItineraryAction.ITEM_CREATED, item = result),
             ),
         )
         return result
@@ -69,29 +71,26 @@ class ItemService(
     }
 
     @Transactional(readOnly = true)
-    fun getAllItems(tripId: Long, categoryId: Long?): List<ItemResult.ItemView> {
+    fun getAllItems(tripId: Long, visitDay: Int?): List<ItemResult.ItemView> {
         tripAuthorizationPolicy.isTripMember(tripId)
-        return if (categoryId != null) {
-            val category = findCategory(tripId, categoryId)
-            itineraryItemRepository.findByCategoryIdOrderByOrderAsc(category.id)
+        return if (visitDay != null) {
+            itineraryItemRepository.findByTripIdAndVisitDayOrderByOrderAsc(tripId, visitDay)
                 .map(ItemResult.ItemView::from)
         } else {
-            categoryRepository.findAllByTripIdOrderByDayAscOrderAsc(tripId)
-                .flatMap { category ->
-                    itineraryItemRepository.findByCategoryIdOrderByOrderAsc(category.id)
-                        .map(ItemResult.ItemView::from)
-                }
+            itineraryItemRepository.findByTripIdOrderByVisitDayAndOrder(tripId).map(ItemResult.ItemView::from)
         }
     }
 
     fun updateItem(command: ItemCommand.Update): ItemResult.ItemView {
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val item = findItem(command.tripId, command.itemId)
-        val targetCategory = command.categoryId?.let { findCategory(command.tripId, it) }
+        val previousVisitDay = item.visitDay
 
-        if (targetCategory != null && targetCategory.id != item.category.id) {
-            item.category = targetCategory
-            item.order = itineraryItemRepository.countByCategoryId(targetCategory.id) + 1
+        command.visitDay?.let { targetVisitDay ->
+            if (targetVisitDay != item.visitDay) {
+                item.visitDay = targetVisitDay
+                item.order = itineraryItemRepository.countByTripIdAndVisitDay(command.tripId, targetVisitDay) + 1
+            }
         }
         command.title?.let { item.title = normalizeNullableText(it) }
         command.time?.let { item.time = it }
@@ -103,7 +102,10 @@ class ItemService(
                 type = TripRealtimeEventType.ITINERARY,
                 tripId = command.tripId,
                 actorId = currentActor.requireUserId(),
-                itinerary = ItineraryEvent(action = ItineraryAction.UPDATED, item = result),
+                itinerary = ItineraryEvent(
+                    action = if (previousVisitDay != item.visitDay) ItineraryAction.ITEM_MOVED_DAY else ItineraryAction.ITEM_UPDATED,
+                    item = result,
+                ),
             ),
         )
         return result
@@ -111,32 +113,35 @@ class ItemService(
 
     fun updateItemOrder(command: ItemCommand.OrderUpdate): List<ItemResult.ItemView> {
         tripAuthorizationPolicy.isTripMember(command.tripId)
-        val newOrderMap = command.items.associateBy({ it.itemId }, { it.order })
+        val newOrderMap = command.items.associateBy({ it.itemId }, { it.itemOrder })
         if (newOrderMap.size != command.items.size) throw BusinessException(ErrorCode.INVALID_INPUT_VALUE)
 
         val items = itineraryItemRepository.findByIdInAndTripId(command.items.map { it.itemId }, command.tripId)
         if (items.size != command.items.size) throw BusinessException(ErrorCode.ITEM_NOT_FOUND)
 
-        val categoryIds = command.items.map { it.categoryId }.distinct()
-        val categoryMap = categoryRepository.findAllById(categoryIds).associateBy { it.id }
-        if (categoryMap.size != categoryIds.size || categoryMap.values.any { it.trip.id != command.tripId }) {
-            throw BusinessException(ErrorCode.CATEGORY_NOT_FOUND)
-        }
-
         command.items.forEach { orderItem ->
             val item = items.first { it.id == orderItem.itemId }
-            val category = categoryMap[orderItem.categoryId] ?: throw BusinessException(ErrorCode.CATEGORY_NOT_FOUND)
-            item.category = category
-            item.order = orderItem.order
+            item.visitDay = orderItem.visitDay
+            item.order = orderItem.itemOrder
         }
 
-        val result = items.sortedBy { it.order }.map(ItemResult.ItemView::from)
+        val result = items.sortedWith(compareBy(ItineraryItem::visitDay, ItineraryItem::order)).map(ItemResult.ItemView::from)
         tripRealtimeEventPublisher.publish(
             TripRealtimeEvent(
                 type = TripRealtimeEventType.ITINERARY,
                 tripId = command.tripId,
                 actorId = currentActor.requireUserId(),
-                itinerary = ItineraryEvent(action = ItineraryAction.REORDERED, items = result),
+                itinerary = ItineraryEvent(
+                    action = ItineraryAction.ITEM_REORDERED,
+                    items = result,
+                    orderChanges = command.items.map {
+                        ItineraryEvent.OrderChange(
+                            itemId = it.itemId,
+                            visitDay = it.visitDay,
+                            itemOrder = it.itemOrder,
+                        )
+                    },
+                ),
             ),
         )
         return result
@@ -145,7 +150,7 @@ class ItemService(
     @Transactional(readOnly = true)
     fun getAllDirectionsForTrip(tripId: Long, mode: String): List<RouteDetails> {
         tripAuthorizationPolicy.isTripMember(tripId)
-        val items = itineraryItemRepository.findByTripIdOrderByCategoryAndOrder(tripId)
+        val items = itineraryItemRepository.findByTripIdOrderByVisitDayAndOrder(tripId)
         if (items.size < 2) return emptyList()
 
         return items.zipWithNext().mapNotNull { (originItem, destinationItem) ->
@@ -163,24 +168,15 @@ class ItemService(
                 type = TripRealtimeEventType.ITINERARY,
                 tripId = tripId,
                 actorId = currentActor.requireUserId(),
-                itinerary = ItineraryEvent(action = ItineraryAction.DELETED, deletedItemId = itemId),
+                itinerary = ItineraryEvent(action = ItineraryAction.ITEM_DELETED, deletedItemId = itemId),
             ),
         )
-    }
-
-    private fun findCategory(tripId: Long, categoryId: Long): Category {
-        val category = categoryRepository.findById(categoryId)
-            .orElseThrow { BusinessException(ErrorCode.CATEGORY_NOT_FOUND) }
-        if (category.trip.id != tripId) {
-            throw BusinessException(ErrorCode.NO_BELONG_TRIP)
-        }
-        return category
     }
 
     private fun findItem(tripId: Long, itemId: Long): ItineraryItem {
         val item = itineraryItemRepository.findById(itemId)
             .orElseThrow { BusinessException(ErrorCode.ITEM_NOT_FOUND) }
-        if (item.category.trip.id != tripId) {
+        if (item.trip.id != tripId) {
             throw BusinessException(ErrorCode.NO_BELONG_TRIP)
         }
         return item

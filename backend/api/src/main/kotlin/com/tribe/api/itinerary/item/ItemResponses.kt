@@ -6,6 +6,20 @@ import com.tribe.api.itinerary.place.PlaceRequests
 import java.time.LocalDateTime
 
 object ItemResponses {
+    data class PlaceTypeSummaryResponse(
+        val primaryType: String?,
+        val types: List<String>,
+        val localizedPrimaryLabel: String?,
+    ) {
+        companion object {
+            fun from(summary: ItemResult.PlaceTypeSummary) = PlaceTypeSummaryResponse(
+                primaryType = summary.primaryType,
+                types = summary.types,
+                localizedPrimaryLabel = summary.localizedPrimaryLabel,
+            )
+        }
+    }
+
     data class LocationResponse(
         val lat: Double,
         val lng: Double,
@@ -22,32 +36,34 @@ object ItemResponses {
 
     data class ItemResponse(
         val itemId: Long,
-        val categoryId: Long,
-        val categoryName: String,
         val tripId: Long,
-        val day: Int,
+        val visitDay: Int,
+        val itemOrder: Int,
         val placeId: Long?,
+        val externalPlaceId: String?,
         val name: String,
         val title: String?,
         val time: LocalDateTime?,
-        val order: Int,
         val memo: String?,
         val location: LocationResponse?,
+        val placeTypeSummary: PlaceTypeSummaryResponse?,
+        val openingStatusWarning: String?,
     ) {
         companion object {
             fun from(view: ItemResult.ItemView) = ItemResponse(
                 itemId = view.itemId,
-                categoryId = view.categoryId,
-                categoryName = view.categoryName,
                 tripId = view.tripId,
-                day = view.day,
+                visitDay = view.visitDay,
+                itemOrder = view.itemOrder,
                 placeId = view.placeId,
+                externalPlaceId = view.externalPlaceId,
                 name = view.name,
                 title = view.title,
                 time = view.time,
-                order = view.order,
                 memo = view.memo,
                 location = view.location?.let(LocationResponse::from),
+                placeTypeSummary = view.placeTypeSummary?.let(PlaceTypeSummaryResponse::from),
+                openingStatusWarning = view.openingStatusWarning,
             )
         }
     }

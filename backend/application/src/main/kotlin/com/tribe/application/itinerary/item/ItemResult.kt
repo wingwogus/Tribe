@@ -4,6 +4,12 @@ import com.tribe.domain.itinerary.item.ItineraryItem
 import java.time.LocalDateTime
 
 object ItemResult {
+    data class PlaceTypeSummary(
+        val primaryType: String?,
+        val types: List<String>,
+        val localizedPrimaryLabel: String?,
+    )
+
     data class LocationInfo(
         val lat: Double,
         val lng: Double,
@@ -12,30 +18,30 @@ object ItemResult {
 
     data class ItemView(
         val itemId: Long,
-        val categoryId: Long,
-        val categoryName: String,
         val tripId: Long,
-        val day: Int,
+        val visitDay: Int,
+        val itemOrder: Int,
         val placeId: Long?,
+        val externalPlaceId: String?,
         val name: String,
         val title: String?,
         val time: LocalDateTime?,
-        val order: Int,
         val memo: String?,
         val location: LocationInfo?,
+        val placeTypeSummary: PlaceTypeSummary?,
+        val openingStatusWarning: String?,
     ) {
         companion object {
             fun from(item: ItineraryItem) = ItemView(
                 itemId = item.id,
-                categoryId = item.category.id,
-                categoryName = item.category.name,
-                tripId = item.category.trip.id,
-                day = item.category.day,
+                tripId = item.trip.id,
+                visitDay = item.visitDay,
+                itemOrder = item.order,
                 placeId = item.place?.id,
+                externalPlaceId = item.place?.externalPlaceId,
                 name = item.place?.name ?: item.title ?: "",
                 title = item.title,
                 time = item.time,
-                order = item.order,
                 memo = item.memo,
                 location = item.place?.let {
                     LocationInfo(
@@ -44,6 +50,8 @@ object ItemResult {
                         address = it.address,
                     )
                 },
+                placeTypeSummary = null,
+                openingStatusWarning = null,
             )
         }
     }

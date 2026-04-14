@@ -7,8 +7,6 @@ import com.tribe.application.itinerary.place.PlaceSearchService
 import com.tribe.application.itinerary.place.RouteDetails
 import com.tribe.application.security.CurrentActor
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
-import com.tribe.domain.itinerary.category.Category
-import com.tribe.domain.itinerary.category.CategoryRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.item.ItineraryItemRepository
 import com.tribe.domain.itinerary.place.Place
@@ -16,6 +14,7 @@ import com.tribe.domain.itinerary.place.PlaceRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.core.TripRepository
 import com.tribe.domain.trip.member.TripMemberRepository
 import com.tribe.domain.trip.member.TripRole
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -36,10 +35,10 @@ import java.util.Optional
 
 @ExtendWith(MockitoExtension::class)
 class ItemServiceTest {
-    @Mock private lateinit var categoryRepository: CategoryRepository
     @Mock private lateinit var itineraryItemRepository: ItineraryItemRepository
     @Mock private lateinit var placeRepository: PlaceRepository
     @Mock private lateinit var placeSearchService: PlaceSearchService
+    @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var tripMemberRepository: TripMemberRepository
     @Mock private lateinit var currentActor: CurrentActor
     @Mock private lateinit var tripRealtimeEventPublisher: TripRealtimeEventPublisher
@@ -49,23 +48,23 @@ class ItemServiceTest {
     @BeforeEach
     fun setUp() {
         itemService = ItemService(
-            categoryRepository = categoryRepository,
             itineraryItemRepository = itineraryItemRepository,
             placeRepository = placeRepository,
             placeSearchService = placeSearchService,
             currentActor = currentActor,
             tripRealtimeEventPublisher = tripRealtimeEventPublisher,
             tripAuthorizationPolicy = com.tribe.application.trip.core.TripAuthorizationPolicy(tripMemberRepository, currentActor),
+            tripRepository = tripRepository,
         )
     }
 
     @Test
-    fun `createItem appends next order in category`() {
+    fun `createItem appends next order in visit day`() {
         val fixture = fixture()
         `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
         `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
-        `when`(categoryRepository.findById(fixture.category.id)).thenReturn(Optional.of(fixture.category))
-        `when`(itineraryItemRepository.countByCategoryId(fixture.category.id)).thenReturn(2)
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.of(fixture.trip))
+        `when`(itineraryItemRepository.countByTripIdAndVisitDay(fixture.trip.id, 1)).thenReturn(2)
         `when`(itineraryItemRepository.save(any(ItineraryItem::class.java))).thenAnswer { invocation ->
             val saved = invocation.arguments[0] as ItineraryItem
             ReflectionTestUtils.setField(saved, "id", 77L)
@@ -75,7 +74,7 @@ class ItemServiceTest {
         val result = itemService.createItem(
             ItemCommand.Create(
                 tripId = fixture.trip.id,
-                categoryId = fixture.category.id,
+                visitDay = 1,
                 title = "Dinner",
                 time = LocalDateTime.of(2026, 4, 12, 19, 0),
                 memo = "Booked",
@@ -83,48 +82,38 @@ class ItemServiceTest {
         )
 
         assertEquals(77L, result.itemId)
-        assertEquals(3, result.order)
+        assertEquals(3, result.itemOrder)
+        assertEquals(1, result.visitDay)
         assertEquals("Dinner", result.title)
     }
 
     @Test
-    fun `createItem rejects category from another trip`() {
+    fun `createItem rejects missing trip`() {
         val fixture = fixture()
-        val otherTrip = Trip(
-            title = "Other",
-            startDate = LocalDate.of(2026, 4, 15),
-            endDate = LocalDate.of(2026, 4, 17),
-            country = Country.SOUTH_KOREA,
-        )
-        ReflectionTestUtils.setField(otherTrip, "id", 30L)
-        val foreignCategory = Category(otherTrip, 1, "Foreign", 1)
-        ReflectionTestUtils.setField(foreignCategory, "id", 99L)
-
         `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
         `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
-        `when`(categoryRepository.findById(99L)).thenReturn(Optional.of(foreignCategory))
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.empty())
 
         val ex = assertThrows(BusinessException::class.java) {
             itemService.createItem(
                 ItemCommand.Create(
                     tripId = fixture.trip.id,
-                    categoryId = 99L,
+                    visitDay = 1,
                     title = "Dinner",
                 ),
             )
         }
 
-        assertEquals(ErrorCode.NO_BELONG_TRIP, ex.errorCode)
+        assertEquals(ErrorCode.TRIP_NOT_FOUND, ex.errorCode)
         verify(itineraryItemRepository, never()).save(any(ItineraryItem::class.java))
     }
 
     @Test
-    fun `updateItem moves item to requested category`() {
+    fun `updateItem moves item to requested visit day`() {
         val fixture = fixture()
-        val secondCategory = Category(fixture.trip, 2, "Evening", 2)
-        ReflectionTestUtils.setField(secondCategory, "id", 12L)
         val item = ItineraryItem(
-            category = fixture.category,
+            trip = fixture.trip,
+            visitDay = 1,
             place = null,
             title = "Lunch",
             time = LocalDateTime.of(2026, 4, 12, 13, 0),
@@ -136,45 +125,41 @@ class ItemServiceTest {
         `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
         `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
         `when`(itineraryItemRepository.findById(55L)).thenReturn(Optional.of(item))
-        `when`(categoryRepository.findById(12L)).thenReturn(Optional.of(secondCategory))
-        `when`(itineraryItemRepository.countByCategoryId(12L)).thenReturn(4)
+        `when`(itineraryItemRepository.countByTripIdAndVisitDay(fixture.trip.id, 2)).thenReturn(4)
 
         val result = itemService.updateItem(
             ItemCommand.Update(
                 tripId = fixture.trip.id,
                 itemId = 55L,
-                categoryId = 12L,
+                visitDay = 2,
                 title = "Late Lunch",
             ),
         )
 
-        assertEquals(12L, result.categoryId)
-        assertEquals(5, result.order)
+        assertEquals(2, result.visitDay)
+        assertEquals(5, result.itemOrder)
         assertEquals("Late Lunch", result.title)
     }
 
     @Test
-    fun `updateItemOrder moves items across categories and order`() {
+    fun `updateItemOrder moves items across days and order`() {
         val fixture = fixture()
-        val secondCategory = Category(fixture.trip, 1, "Evening", 2)
-        ReflectionTestUtils.setField(secondCategory, "id", 12L)
-        val item = ItineraryItem(fixture.category, null, "Lunch", null, 1, null)
+        val item = ItineraryItem(fixture.trip, 1, null, "Lunch", null, 1, null)
         ReflectionTestUtils.setField(item, "id", 55L)
 
         `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
         `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
         `when`(itineraryItemRepository.findByIdInAndTripId(listOf(55L), fixture.trip.id)).thenReturn(listOf(item))
-        `when`(categoryRepository.findAllById(listOf(12L))).thenReturn(listOf(secondCategory))
 
         val result = itemService.updateItemOrder(
             ItemCommand.OrderUpdate(
                 tripId = fixture.trip.id,
-                items = listOf(ItemCommand.OrderItem(55L, 12L, 3)),
+                items = listOf(ItemCommand.OrderItem(55L, 2, 3)),
             ),
         )
 
-        assertEquals(12L, result.first().categoryId)
-        assertEquals(3, result.first().order)
+        assertEquals(2, result.first().visitDay)
+        assertEquals(3, result.first().itemOrder)
     }
 
     @Test
@@ -182,12 +167,12 @@ class ItemServiceTest {
         val fixture = fixture()
         val originPlace = Place("origin", "Origin", "addr1", java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO)
         val destinationPlace = Place("dest", "Destination", "addr2", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE)
-        val originItem = ItineraryItem(fixture.category, originPlace, null, null, 1, null)
-        val destinationItem = ItineraryItem(fixture.category, destinationPlace, null, null, 2, null)
+        val originItem = ItineraryItem(fixture.trip, 1, originPlace, null, null, 1, null)
+        val destinationItem = ItineraryItem(fixture.trip, 1, destinationPlace, null, null, 2, null)
 
         `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
         `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
-        `when`(itineraryItemRepository.findByTripIdOrderByCategoryAndOrder(fixture.trip.id)).thenReturn(listOf(originItem, destinationItem))
+        `when`(itineraryItemRepository.findByTripIdOrderByVisitDayAndOrder(fixture.trip.id)).thenReturn(listOf(originItem, destinationItem))
         `when`(placeSearchService.directions("origin", "dest", "walking")).thenReturn(
             RouteDetails(
                 travelMode = "WALKING",
@@ -216,15 +201,12 @@ class ItemServiceTest {
         val member = Member(id = 2L, email = "member@example.com", passwordHash = "hashed", nickname = "member")
         val tripMember = com.tribe.domain.trip.member.TripMember(member = member, trip = trip, role = TripRole.MEMBER)
         ReflectionTestUtils.setField(tripMember, "id", 3L)
-        val category = Category(trip, 1, "Meals", 1)
-        ReflectionTestUtils.setField(category, "id", 11L)
-        return Fixture(trip, member, tripMember, category)
+        return Fixture(trip, member, tripMember)
     }
 
     private data class Fixture(
         val trip: Trip,
         val member: Member,
         val tripMember: com.tribe.domain.trip.member.TripMember,
-        val category: Category,
     )
 }
