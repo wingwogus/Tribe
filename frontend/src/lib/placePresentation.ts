@@ -4,6 +4,7 @@ const OPENING_WARNING_LABELS: Record<string, string> = {
   OPEN: "영업 중",
   OUTSIDE_BUSINESS_HOURS: "영업시간 외",
   CLOSED_DAY: "휴무일",
+  CLOSED_DAY_POSSIBLE: "휴무일",
   TEMPORARILY_CLOSED: "임시 휴무",
   NO_HOURS_INFO: "영업시간 정보 없음",
 };
@@ -23,6 +24,23 @@ const NORMALIZED_CATEGORY_LABELS: Record<NormalizedPlaceCategoryKey, string> = {
   MUSEUM: "박물관",
   TRANSPORT: "교통",
   ETC: "기타",
+};
+
+const NORMALIZED_CATEGORY_COLORS: Record<NormalizedPlaceCategoryKey, string> = {
+  KOREAN_FOOD: "#F97316",
+  JAPANESE_FOOD: "#EF4444",
+  CHINESE_FOOD: "#DC2626",
+  RESTAURANT: "#F59E0B",
+  CAFE: "#8B5CF6",
+  BAKERY: "#D97706",
+  BAR: "#7C3AED",
+  ATTRACTION: "#2563EB",
+  SHOPPING: "#EC4899",
+  STAY: "#14B8A6",
+  PARK: "#16A34A",
+  MUSEUM: "#4F46E5",
+  TRANSPORT: "#64748B",
+  ETC: "#94A3B8",
 };
 
 const PLACE_TYPE_FALLBACK_LABELS: Record<string, string> = {
@@ -63,7 +81,15 @@ export const getPlaceTypeLabel = (
   summary?: PlaceTypeSummary | null,
   normalizedCategoryKey?: NormalizedPlaceCategoryKey | null,
 ) =>
-  getPlaceTypeLabelFromKey(getPlaceTypeKey(summary, normalizedCategoryKey)) || summary?.localizedPrimaryLabel || null;
+  getPlaceTypeLabelFromKey(getPlaceTypeKey(summary, normalizedCategoryKey)) || summary?.displayPrimaryLabel || null;
+
+export const getPlaceCategoryColor = (
+  summary?: PlaceTypeSummary | null,
+  normalizedCategoryKey?: NormalizedPlaceCategoryKey | null,
+) => {
+  const key = getPlaceTypeKey(summary, normalizedCategoryKey);
+  return key ? NORMALIZED_CATEGORY_COLORS[key as NormalizedPlaceCategoryKey] || NORMALIZED_CATEGORY_COLORS.ETC : NORMALIZED_CATEGORY_COLORS.ETC;
+};
 
 export const getPlacePhotoUrl = (_photoHint?: PlacePhotoHint | null) => null;
 
@@ -80,7 +106,7 @@ export const matchesPlaceTypeFilter = (
 };
 
 export const getOpeningStatusLabel = (warning?: string | null) => {
-  if (!warning) {
+  if (!warning || warning === "NO_INFO" || warning === "NO_HOURS_INFO") {
     return null;
   }
 
@@ -92,10 +118,12 @@ export const getOpeningStatusTone = (warning?: string | null) => {
     case "OPEN":
       return "default";
     case "OUTSIDE_BUSINESS_HOURS":
+    case "CLOSED_DAY_POSSIBLE":
     case "CLOSED_DAY":
     case "TEMPORARILY_CLOSED":
       return "destructive";
     case "NO_HOURS_INFO":
+    case "NO_INFO":
       return "secondary";
     default:
       return "secondary";

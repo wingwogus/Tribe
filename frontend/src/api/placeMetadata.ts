@@ -1,7 +1,7 @@
 export interface PlaceTypeSummary {
   primaryType: string | null;
   types: string[];
-  localizedPrimaryLabel: string | null;
+  displayPrimaryLabel: string | null;
 }
 
 export type NormalizedPlaceCategoryKey =

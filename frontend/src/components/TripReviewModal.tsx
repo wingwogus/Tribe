@@ -16,6 +16,7 @@ import { fetchAllItinerariesForTrip, itineraryApi } from "@/api/itinerary";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlaceSearchResult } from "@/api/places";
 import { tripQueryKeys } from "@/lib/tripQueryKeys";
+import { runCreatePlaceItineraryFlow } from "@/lib/itineraryCreateFlow";
 import { getPlacePhotoUrl, getPlaceTypeLabel } from "@/lib/placePresentation";
 import { readApiErrorMessage } from "@/api/http";
 
@@ -131,29 +132,36 @@ export const TripReviewModal = ({ open, onOpenChange, tripId, tripStartDate, tri
   // 일정에 추가 Mutation
   const addToItineraryMutation = useMutation({
     mutationFn: ({ visitDay, placeId }: { visitDay: number; placeId?: number }) =>
-      itineraryApi.createItinerary(tripId, visitDay, {
+      runCreatePlaceItineraryFlow({
         visitDay,
-        placeId: placeId || null,
-        title: null,
-        time: null,
-        memo: null,
+        placeId,
+        create: (targetVisitDay, data) =>
+          itineraryApi.createItinerary(tripId, targetVisitDay, {
+            visitDay: targetVisitDay,
+            placeId: data.placeId,
+            title: data.title,
+            time: data.time,
+            memo: data.memo,
+          }),
+        afterCreate: async () => {
+          await queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId) });
+        },
+        onSuccess: () => {
+          toast({
+            title: "일정에 추가됨",
+            description: "장소가 일정에 추가되었습니다.",
+          });
+          setAddingToItinerary(null);
+          setSelectedVisitDay("");
+        },
+        onError: () => {
+          toast({
+            title: "추가 실패",
+            description: "일정 추가 중 오류가 발생했습니다.",
+            variant: "destructive",
+          });
+        },
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId) });
-      toast({
-        title: "일정에 추가됨",
-        description: "장소가 일정에 추가되었습니다.",
-      });
-      setAddingToItinerary(null);
-      setSelectedVisitDay("");
-    },
-    onError: () => {
-      toast({
-        title: "추가 실패",
-        description: "일정 추가 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
   });
 
   const handleAddToWishlist = (place: PlaceSearchResult) => {

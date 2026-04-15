@@ -73,6 +73,7 @@ import {DailySettlementModal} from "@/components/DailySettlementModal";
 import {TotalSettlementModal} from "@/components/TotalSettlementModal";
 import {TripMembersModal} from "@/components/TripMembersModal";
 import {ItineraryMap, ItineraryMapHandle} from "@/components/ItineraryMap";
+import {PlaceDetailPanel, type PlaceDetailPanelPlace} from "@/components/PlaceDetailPanel";
 import {TripChatModal} from "@/components/TripChatModal";
 import {tripApi} from "@/api/trips";
 import {wishlistApi, WishlistItem} from "@/api/wishlist";
@@ -86,7 +87,7 @@ import {
 } from "@/api/expenses";
 import {Badge} from "@/components/ui/badge";
 import {settlementApi} from "@/api/settlement";
-import {PlaceSearchResult} from "@/api/places";
+import {PlaceSearchResult, placesApi} from "@/api/places";
 import {getMemberInfo} from "@/api/auth";
 import {useToast} from "@/hooks/use-toast";
 import {useIsMobile} from "@/hooks/use-mobile";
@@ -95,11 +96,21 @@ import { tripQueryKeys } from "@/lib/tripQueryKeys";
 import {getCountryTimezone} from "@/lib/utils";
 import {RouteInfoCard} from "@/components/RouteInfoCard";
 import {getDefaultCurrencyByCountry} from "@/lib/currency";
+import {
+  buildPlaceItineraryCreateData,
+  runCreatePlaceItineraryFlow,
+  toItineraryPanelSelection,
+  toWishlistPanelSelection,
+  transitionWishlistSelectionAfterCreate,
+  type SelectedPlacePanelState,
+} from "@/lib/itineraryCreateFlow";
 import {addDays, format} from "date-fns";
+import { ko } from "date-fns/locale";
 import {readApiErrorMessage} from "@/api/http";
 import {
   getOpeningStatusLabel,
   getOpeningStatusTone,
+  getPlaceCategoryColor,
   getPlacePhotoUrl,
   getPlaceTypeKey,
   getPlaceTypeLabel,
@@ -118,18 +129,6 @@ type DaySection = {
   itineraryItems: ItineraryResponse[];
 };
 
-const getDaySectionColor = (visitDay: number): { bg: string; text: string; marker: string } => {
-  const palette = [
-    { bg: 'bg-rose-50 dark:bg-rose-950/50', text: 'text-rose-700 dark:text-rose-300', marker: '#FB7185' },
-    { bg: 'bg-amber-50 dark:bg-amber-950/50', text: 'text-amber-700 dark:text-amber-300', marker: '#FBBF24' },
-    { bg: 'bg-emerald-50 dark:bg-emerald-950/50', text: 'text-emerald-700 dark:text-emerald-300', marker: '#34D399' },
-    { bg: 'bg-sky-50 dark:bg-sky-950/50', text: 'text-sky-700 dark:text-sky-300', marker: '#38BDF8' },
-    { bg: 'bg-purple-50 dark:bg-purple-950/50', text: 'text-purple-700 dark:text-purple-300', marker: '#A78BFA' },
-    { bg: 'bg-slate-50 dark:bg-slate-950/50', text: 'text-slate-700 dark:text-slate-300', marker: '#94A3B8' },
-  ];
-  return palette[(Math.max(visitDay, 1) - 1) % palette.length];
-};
-
 interface SortableDaySectionProps {
   daySection: DaySection;
   daySectionIndex: number;
@@ -139,14 +138,11 @@ interface SortableDaySectionProps {
   dropTargetVisitDay: number | null;
   draggedItinerary: { item: ItineraryResponse; visitDay: number } | null;
   dragOverItemId: number | null;
-  mapRef: React.RefObject<ItineraryMapHandle>;
   findRoutesForItems: (item1: ItineraryResponse, item2: ItineraryResponse) => RouteDetails[];
   handleDaySectionDragOver: (e: React.DragEvent, visitDay: number) => void;
   handleDragOver: (e: React.DragEvent, visitDay: number) => void;
   handleDragLeave: () => void;
   handleDrop: (e: React.DragEvent, visitDay: number) => void;
-  handleUpdateDaySectionName: (visitDay: number, currentName: string) => void;
-  handleDeleteDaySection: (visitDay: number) => void;
   handleItineraryDragStart: (item: ItineraryResponse, visitDay: number) => void;
   handleItineraryDragOver: (e: React.DragEvent, targetItem: ItineraryResponse, visitDay: number) => void;
   handleDragEnd: () => void;
@@ -161,6 +157,7 @@ interface SortableDaySectionProps {
   isMobile: boolean;
   onMoveItemUp: (visitDay: number, itemId: number) => void;
   onMoveItemDown: (visitDay: number, itemId: number) => void;
+  onSelectItineraryItem: (item: ItineraryResponse) => void;
 }
 
 const SortableDaySection = ({
@@ -172,14 +169,11 @@ const SortableDaySection = ({
   dropTargetVisitDay,
   draggedItinerary,
   dragOverItemId,
-  mapRef,
   findRoutesForItems,
   handleDaySectionDragOver,
   handleDragOver,
   handleDragLeave,
   handleDrop,
-  handleUpdateDaySectionName,
-  handleDeleteDaySection,
   handleItineraryDragStart,
   handleItineraryDragOver,
   handleDragEnd,
@@ -194,10 +188,9 @@ const SortableDaySection = ({
   isMobile,
   onMoveItemUp,
   onMoveItemDown,
+  onSelectItineraryItem,
 }: SortableDaySectionProps) => {
   const {
-    attributes,
-    listeners,
     setNodeRef,
     transform,
     transition,
@@ -314,16 +307,11 @@ const SortableDaySection = ({
                            {pinNumber && (
                               <div 
                                 className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white cursor-pointer hover:scale-110 transition-transform"
-                                style={{ backgroundColor: getDaySectionColor(daySection.visitDay).marker }}
-                                onClick={() => {
-                                  if (item.location && mapRef.current) {
-                                    mapRef.current.flyToMarker(item.itineraryId);
-                                    // Delay closing drawer to allow map animation to start
-                                    setTimeout(() => {
-                                      if (setIsItineraryDrawerOpen) {
-                                        setIsItineraryDrawerOpen(false);
-                                      }
-                                    }, 150);
+                              style={{ backgroundColor: getPlaceCategoryColor(item.placeTypeSummary, item.normalizedCategoryKey) }}
+                              onClick={() => {
+                                  onSelectItineraryItem(item);
+                                  if (setIsItineraryDrawerOpen) {
+                                    setTimeout(() => setIsItineraryDrawerOpen(false), 150);
                                   }
                                 }}
                               >
@@ -333,14 +321,9 @@ const SortableDaySection = ({
                             <h4
                               className={`font-medium text-sm ${item.location ? 'cursor-pointer hover:text-primary transition-colors' : ''}`}
                               onClick={() => {
-                                if (item.location && mapRef.current) {
-                                  mapRef.current.flyToMarker(item.itineraryId);
-                                  // Delay closing drawer to allow map animation to start
-                                  setTimeout(() => {
-                                    if (setIsItineraryDrawerOpen) {
-                                      setIsItineraryDrawerOpen(false);
-                                    }
-                                  }, 150);
+                                onSelectItineraryItem(item);
+                                if (setIsItineraryDrawerOpen) {
+                                  setTimeout(() => setIsItineraryDrawerOpen(false), 150);
                                 }
                               }}
                             >
@@ -474,7 +457,7 @@ const SortableDaySection = ({
                             itemId: item.itineraryId,
                             visitDay: daySection.visitDay,
                             memo: item.memo || "",
-                            time: item.time || ""
+                            timeInput: item.time?.split('T')[1]?.slice(0, 5) || ""
                           })}
                           className="h-7 w-7 p-0"
                       >
@@ -604,7 +587,7 @@ const TripPlanner = () => {
     itemId: number;
     visitDay: number;
     memo: string;
-    time: string;
+    timeInput: string;
   } | null>(null);
   const [draggedItem, setDraggedItem] = useState<WishlistItem | null>(null);
   const [dropTargetVisitDay, setDropTargetVisitDay] = useState<number | null>(null);
@@ -680,6 +663,7 @@ const TripPlanner = () => {
   const [isMembersHovered, setIsMembersHovered] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlaceTypeFilter, setSelectedPlaceTypeFilter] = useState("ALL");
+  const [selectedPlacePanel, setSelectedPlacePanel] = useState<SelectedPlacePanelState | null>(null);
   
   // Debounce wishlist search
   useEffect(() => {
@@ -773,6 +757,72 @@ const TripPlanner = () => {
     [itineraryItems, totalDays],
   );
 
+  const selectedPlaceDayOptions = useMemo(
+    () => Array.from({ length: totalDays }, (_, index) => {
+      const day = index + 1;
+      return {
+        visitDay: day,
+        label: `Day ${day}`,
+      };
+    }),
+    [totalDays],
+  );
+
+  const selectedItineraryPlace = useMemo(
+    () => selectedPlacePanel?.mode === "itinerary"
+      ? itineraryItems.find((item) => item.itineraryId === selectedPlacePanel.itineraryId) ?? null
+      : null,
+    [itineraryItems, selectedPlacePanel],
+  );
+
+  const selectedWishlistPlace = useMemo(
+    () => selectedPlacePanel?.mode === "wishlist"
+      ? wishlistItems.find((item) => item.wishlistItemId === selectedPlacePanel.wishlistItemId) ?? null
+      : null,
+    [selectedPlacePanel, wishlistItems],
+  );
+
+  const selectedPlacePanelPreview = useMemo<PlaceDetailPanelPlace | null>(() => {
+    if (selectedPlacePanel?.mode === "itinerary" && selectedItineraryPlace) {
+      return {
+        mode: "itinerary",
+        name: selectedItineraryPlace.name,
+        address: selectedItineraryPlace.location?.address,
+        time: selectedItineraryPlace.time,
+        memo: selectedItineraryPlace.memo,
+        placeTypeSummary: selectedItineraryPlace.placeTypeSummary,
+        normalizedCategoryKey: selectedItineraryPlace.normalizedCategoryKey,
+        placeDetailSummary: selectedItineraryPlace.placeDetailSummary,
+        openingStatusWarning: selectedItineraryPlace.openingStatusWarning,
+      };
+    }
+
+    if (selectedPlacePanel?.mode === "wishlist" && selectedWishlistPlace) {
+      return {
+        mode: "wishlist",
+        name: selectedWishlistPlace.name,
+        address: selectedWishlistPlace.address,
+        adderNickname: selectedWishlistPlace.adder.nickname,
+        placeTypeSummary: selectedWishlistPlace.placeTypeSummary,
+        normalizedCategoryKey: selectedWishlistPlace.normalizedCategoryKey,
+        placeDetailSummary: selectedWishlistPlace.placeDetailSummary,
+      };
+    }
+
+    return null;
+  }, [selectedItineraryPlace, selectedPlacePanel, selectedWishlistPlace]);
+
+  const {
+    data: selectedPlaceDetail,
+    isLoading: isLoadingSelectedPlaceDetail,
+    isError: isSelectedPlaceDetailError,
+  } = useQuery({
+    queryKey: ["place-detail-panel", selectedPlacePanel?.placeId ?? null],
+    queryFn: () => placesApi.getPlaceDetail(selectedPlacePanel!.placeId),
+    enabled: !!selectedPlacePanel?.placeId,
+    staleTime: 1000 * 60 * 5,
+  });
+
   const resolveExpenseDate = useCallback((visitDay?: number | null, fallbackDate?: string) => {
     if (!tripDetail?.startDate || !visitDay) {
       return fallbackDate || new Date().toISOString().slice(0, 10);
@@ -787,6 +837,88 @@ const TripPlanner = () => {
     baseDate.setDate(baseDate.getDate() + Math.max(daySection.day - 1, 0));
     return baseDate.toISOString().slice(0, 10);
   }, [daySections, tripDetail?.startDate]);
+
+  const closeSelectedPlacePanel = useCallback(() => {
+    setSelectedPlacePanel(null);
+  }, []);
+
+  const openItineraryPlacePanel = useCallback((item: ItineraryResponse, options?: { toggleIfSame?: boolean }) => {
+    const nextSelection = toItineraryPanelSelection(item);
+    if (!nextSelection) {
+      return;
+    }
+
+    if (isMobile) {
+      setIsItineraryDrawerOpen(false);
+      setIsWishlistDrawerOpen(false);
+    }
+
+    setSelectedPlacePanel((previous) => {
+      const isSameSelection = previous?.mode === "itinerary" && previous.itineraryId === item.itineraryId;
+      if (options?.toggleIfSame && isSameSelection) {
+        return null;
+      }
+
+      return nextSelection;
+    });
+  }, [isMobile]);
+
+  const openWishlistPlacePanel = useCallback((item: WishlistItem, options?: { toggleIfSame?: boolean }) => {
+    if (!item.placeId) {
+      return;
+    }
+    const nextSelection = toWishlistPanelSelection(item);
+
+    if (isMobile) {
+      setIsItineraryDrawerOpen(false);
+      setIsWishlistDrawerOpen(false);
+    }
+
+    setSelectedPlacePanel((previous) => {
+      const isSameSelection = previous?.mode === "wishlist" && previous.wishlistItemId === item.wishlistItemId;
+      if (options?.toggleIfSame && isSameSelection) {
+        return null;
+      }
+
+      return nextSelection;
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!selectedPlacePanel) {
+      return;
+    }
+
+    if (selectedPlacePanel.mode === "itinerary" && selectedPlacePanel.itineraryId != null) {
+      mapRef.current?.focusItineraryMarker(selectedPlacePanel.itineraryId, {
+        offsetForPanel: !isMobile,
+      });
+      return;
+    }
+
+    if (selectedPlacePanel.mode === "wishlist" && selectedPlacePanel.wishlistItemId != null) {
+      mapRef.current?.focusWishlistMarker(selectedPlacePanel.wishlistItemId, {
+        offsetForPanel: !isMobile,
+      });
+    }
+  }, [isMobile, selectedPlacePanel]);
+
+  useEffect(() => {
+    if (selectedPlacePanel?.mode === "itinerary" && !selectedItineraryPlace) {
+      setSelectedPlacePanel(null);
+      return;
+    }
+
+    if (selectedPlacePanel?.mode === "wishlist" && !selectedWishlistPlace) {
+      setSelectedPlacePanel(null);
+    }
+  }, [selectedItineraryPlace, selectedPlacePanel, selectedWishlistPlace]);
+
+  useEffect(() => {
+    if (selectedPlacePanel?.mode === "itinerary" && selectedItineraryPlace && selectedItineraryPlace.visitDay !== selectedDay) {
+      setSelectedPlacePanel(null);
+    }
+  }, [selectedDay, selectedItineraryPlace, selectedPlacePanel]);
 
   // Directions query
   const { data: directionsData = [] } = useQuery({
@@ -885,8 +1017,11 @@ const TripPlanner = () => {
   const deleteWishlistMutation = useMutation({
     mutationFn: (wishlistItemId: number) =>
       wishlistApi.deleteWishlistItems(Number(tripId), [wishlistItemId]),
-    onSuccess: () => {
+    onSuccess: (_, wishlistItemId) => {
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
+      if (selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === wishlistItemId) {
+        setSelectedPlacePanel(null);
+      }
       toast({
         title: "삭제됨",
         description: "위시리스트에서 삭제되었습니다.",
@@ -935,20 +1070,6 @@ const TripPlanner = () => {
     setCreateItineraryModal({ isOpen: true, visitDay: day, dayLabel: `Day ${day}` });
   };
 
-  const handleDeleteDaySection = (_visitDay: number) => {
-    toast({
-      title: "비활성화됨",
-      description: "날짜 섹션 삭제는 더 이상 지원되지 않습니다.",
-    });
-  };
-
-  const handleUpdateDaySectionName = (_visitDay: number, _currentName: string) => {
-    toast({
-      title: "비활성화됨",
-      description: "날짜 섹션 이름 수정은 더 이상 지원되지 않습니다.",
-    });
-  };
-
   // Generate invite link
   const handleGenerateInvite = async () => {
     if (!tripId) return;
@@ -967,67 +1088,79 @@ const TripPlanner = () => {
     }
   };
 
-  // Add itinerary from wishlist
-  const addItineraryMutation = useMutation({
-    mutationFn: ({ 
-      visitDay, 
-      data 
-    }: { 
-      visitDay: number; 
-      data: {
-        placeId?: number | null;
-        title?: string | null;
-        time?: string | null;
-        memo?: string | null;
-      }
-    }) =>
-      itineraryApi.createItinerary(Number(tripId), visitDay, {
-        visitDay: visitDay,
-        ...data,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
-      toast({
-        title: "일정 추가됨",
-        description: "위시리스트에서 일정으로 추가되었습니다.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "추가 실패",
-        description: "일정 추가 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
+  const createItineraryAndSync = useCallback(async ({
+    visitDay,
+    placeId,
+    title,
+    time,
+    memo,
+    successDescription,
+    onCreated,
+  }: {
+    visitDay: number;
+    placeId?: number | null;
+    title?: string | null;
+    time?: string | null;
+    memo?: string | null;
+    successDescription: string;
+    onCreated?: (createdItem: ItineraryResponse) => void;
+  }) => {
+    const createdItem = await runCreatePlaceItineraryFlow({
+      visitDay,
+      placeId,
+      create: (targetVisitDay, createData) =>
+        itineraryApi.createItinerary(Number(tripId), targetVisitDay, {
+          visitDay: targetVisitDay,
+          placeId: createData.placeId,
+          title: title ?? createData.title,
+          time: time ?? createData.time,
+          memo: memo ?? createData.memo,
+        }),
+      afterCreate: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") }),
+          queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") }),
+        ]);
+      },
+      onSuccess: (created) => {
+        toast({
+          title: "일정 추가됨",
+          description: successDescription,
+        });
+        onCreated?.(created);
+      },
+      onError: () => {
+        toast({
+          title: "추가 실패",
+          description: "일정 추가 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      },
+    });
 
-  // Handle adding wishlist item to itinerary from map
-  const handleAddWishlistToItinerary = async (wishlistItem: WishlistItem, visitDay: number) => {
-    try {
-      await itineraryApi.createItinerary(Number(tripId), visitDay, {
-        visitDay: visitDay,
-        placeId: wishlistItem.placeId,
-        memo: null,
-        time: null,
-        title: null,
-      });
-      
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
-      queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
-      
-      toast({
-        title: "일정에 추가되었습니다",
-        description: `${wishlistItem.name}이(가) 일정에 추가되었습니다.`,
-      });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "일정 추가 실패",
-        description: "일정 추가 중 오류가 발생했습니다.",
-      });
+    return createdItem;
+  }, [queryClient, toast, tripId]);
+
+  const handleAddWishlistToItinerary = useCallback(async (wishlistItem: WishlistItem, visitDay: number) => {
+    const createdItem = await createItineraryAndSync({
+      visitDay,
+      placeId: wishlistItem.placeId,
+      successDescription: `${wishlistItem.name}이(가) 일정에 추가되었습니다.`,
+      onCreated: (created) => {
+        setSelectedPlacePanel((currentSelection) =>
+          transitionWishlistSelectionAfterCreate({
+            currentSelection,
+            wishlistItemId: wishlistItem.wishlistItemId,
+            createdItem: created,
+          }),
+        );
+      },
+    });
+
+    if (!createdItem && selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === wishlistItem.wishlistItemId) {
+      setSelectedPlacePanel(null);
     }
-  };
+  }, [createItineraryAndSync, selectedPlacePanel]);
 
   // Update itinerary
   const updateItineraryMutation = useMutation({
@@ -1065,9 +1198,12 @@ const TripPlanner = () => {
   const deleteItineraryMutation = useMutation({
     mutationFn: ({ visitDay, itemId }: { visitDay: number; itemId: number }) =>
       itineraryApi.deleteItinerary(Number(tripId), visitDay, itemId),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
+      if (selectedPlacePanel?.mode === "itinerary" && selectedPlacePanel.itineraryId === variables.itemId) {
+        setSelectedPlacePanel(null);
+      }
       toast({
         title: "삭제 완료",
         description: "일정이 삭제되었습니다.",
@@ -1095,6 +1231,32 @@ const TripPlanner = () => {
       deleteWishlistMutation.mutate(wishlistItemId);
     }
   };
+
+  const handleOpenSelectedPlaceInGoogleMaps = useCallback(() => {
+    if (selectedPlaceDetail?.googleMapsUri) {
+      window.open(selectedPlaceDetail.googleMapsUri, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (selectedPlacePanelPreview?.name) {
+      openGoogleMaps(getGoogleMapsSearchUrl(selectedPlacePanelPreview.name));
+    }
+  }, [selectedPlaceDetail?.googleMapsUri, selectedPlacePanelPreview?.name]);
+
+  const handleDeleteSelectedPlacePanelItem = useCallback(() => {
+    if (!selectedPlacePanel) {
+      return;
+    }
+
+    if (selectedPlacePanel.mode === "itinerary" && selectedPlacePanel.itineraryId != null && selectedPlacePanel.visitDay != null) {
+      handleDeleteItineraryFromMap(selectedPlacePanel.itineraryId, selectedPlacePanel.visitDay);
+      return;
+    }
+
+    if (selectedPlacePanel.mode === "wishlist" && selectedPlacePanel.wishlistItemId != null) {
+      handleDeleteWishlistFromMap(selectedPlacePanel.wishlistItemId);
+    }
+  }, [selectedPlacePanel]);
 
   // Update itinerary order
   const updateItineraryOrderMutation = useMutation({
@@ -1396,14 +1558,10 @@ const TripPlanner = () => {
     
     if (draggedItem) {
       // Dropping wishlist item
-      addItineraryMutation.mutate({
+      void createItineraryAndSync({
         visitDay,
-        data: {
-          placeId: Number(draggedItem.placeId) || null,
-          title: null,
-          time: null,
-          memo: null,
-        }
+        placeId: Number(draggedItem.placeId) || null,
+        successDescription: "위시리스트에서 일정으로 추가되었습니다.",
       });
     } else if (draggedItinerary) {
       // Handle itinerary item drop (within same day section or cross-day move)
@@ -1608,10 +1766,24 @@ const TripPlanner = () => {
     );
   }
 
-  // Helper function to get date for a day
+  // Helper function to get date label for a day
   const getDateForDay = (day: number) => {
     const date = addDays(new Date(tripDetail.startDate), day - 1);
     return format(date, 'M.d');
+  };
+
+  const getDayLabelForDay = (day: number) => {
+    const date = addDays(new Date(tripDetail.startDate), day - 1);
+    return format(date, 'M.d(EEE)', { locale: ko });
+  };
+
+  const buildVisitDateTimeForDay = (visitDay: number, timeInput?: string | null) => {
+    if (!tripDetail?.startDate || !timeInput) {
+      return null;
+    }
+
+    const targetDate = addDays(new Date(`${tripDetail.startDate}T00:00:00`), visitDay - 1);
+    return `${format(targetDate, "yyyy-MM-dd")}T${timeInput}:00`;
   };
 
   // Helper function to find routes between two itinerary items
@@ -1790,7 +1962,12 @@ const TripPlanner = () => {
       {/* Main Content */}
       <main className="relative flex flex-col md:flex-row w-full flex-1 min-h-0 overflow-hidden">
         {/* Mobile Drawer for Itinerary */}
-        <Drawer open={isItineraryDrawerOpen} onOpenChange={setIsItineraryDrawerOpen}>
+        <Drawer open={isItineraryDrawerOpen} onOpenChange={(open) => {
+          setIsItineraryDrawerOpen(open);
+          if (open) {
+            setSelectedPlacePanel(null);
+          }
+        }}>
           <DrawerContent className="md:hidden h-[85vh] flex flex-col">
             <Card className="flex flex-col bg-white border-0 flex-1 overflow-hidden">
               <CardHeader className="flex-shrink-0 p-4 border-b">
@@ -1830,7 +2007,7 @@ const TripPlanner = () => {
                     {Array.from({ length: totalDays }, (_, i) => i + 1).map(day => (
                       <TabsTrigger key={day} value={String(day)} className="text-xs flex flex-col items-center gap-0.5 py-1">
                         <span>Day {day}</span>
-                        <span className="text-[10px] text-muted-foreground">{getDateForDay(day)}</span>
+                        <span className="text-[10px] text-muted-foreground">{getDayLabelForDay(day)}</span>
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -1861,14 +2038,11 @@ const TripPlanner = () => {
                   dropTargetVisitDay={dropTargetVisitDay}
                   draggedItinerary={draggedItinerary}
                   dragOverItemId={dragOverItemId}
-                  mapRef={mapRef}
                   findRoutesForItems={findRoutesForItems}
                   handleDaySectionDragOver={handleDaySectionDragOver}
                   handleDragOver={handleDragOver}
                   handleDragLeave={handleDragLeave}
                   handleDrop={handleDrop}
-                  handleUpdateDaySectionName={handleUpdateDaySectionName}
-                  handleDeleteDaySection={handleDeleteDaySection}
                   handleItineraryDragStart={handleItineraryDragStart}
                   handleItineraryDragOver={handleItineraryDragOver}
                   handleDragEnd={handleDragEnd}
@@ -1883,6 +2057,7 @@ const TripPlanner = () => {
                   isMobile={isMobile}
                   onMoveItemUp={handleMoveItemUp}
                   onMoveItemDown={handleMoveItemDown}
+                  onSelectItineraryItem={openItineraryPlacePanel}
                 />
               ))}
             </div>
@@ -1957,7 +2132,7 @@ const TripPlanner = () => {
                   {Array.from({ length: totalDays }, (_, i) => i + 1).map(day => (
                     <TabsTrigger key={day} value={String(day)} className="text-xs md:text-sm flex flex-col items-center gap-0.5 py-1">
                       <span>Day {day}</span>
-                      <span className="text-[10px] md:text-xs text-muted-foreground">{getDateForDay(day)}</span>
+                      <span className="text-[10px] md:text-xs text-muted-foreground">{getDayLabelForDay(day)}</span>
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -1988,14 +2163,11 @@ const TripPlanner = () => {
                 dropTargetVisitDay={dropTargetVisitDay}
                 draggedItinerary={draggedItinerary}
                 dragOverItemId={dragOverItemId}
-                mapRef={mapRef}
                 findRoutesForItems={findRoutesForItems}
                 handleDaySectionDragOver={handleDaySectionDragOver}
                 handleDragOver={handleDragOver}
                 handleDragLeave={handleDragLeave}
                 handleDrop={handleDrop}
-                handleUpdateDaySectionName={handleUpdateDaySectionName}
-                handleDeleteDaySection={handleDeleteDaySection}
                 handleItineraryDragStart={handleItineraryDragStart}
                 handleItineraryDragOver={handleItineraryDragOver}
                 handleDragEnd={handleDragEnd}
@@ -2009,6 +2181,7 @@ const TripPlanner = () => {
                 isMobile={isMobile}
                 onMoveItemUp={handleMoveItemUp}
                 onMoveItemDown={handleMoveItemDown}
+                onSelectItineraryItem={openItineraryPlacePanel}
               />
             ))}
           </div>
@@ -2057,15 +2230,32 @@ const TripPlanner = () => {
             wishlistItems={wishlistItems}
             tripCountry={tripDetail?.country}
             tripRegionCode={tripDetail?.regionCode}
-            onAddToItinerary={handleAddWishlistToItinerary}
-            onDeleteItinerary={handleDeleteItineraryFromMap}
-            onDeleteWishlist={handleDeleteWishlistFromMap}
+            selectedItineraryId={selectedPlacePanel?.mode === "itinerary" ? selectedPlacePanel.itineraryId ?? null : null}
+            selectedWishlistItemId={selectedPlacePanel?.mode === "wishlist" ? selectedPlacePanel.wishlistItemId ?? null : null}
+            panelOffsetPx={400}
+            onSelectItineraryMarker={(item) => openItineraryPlacePanel(item, { toggleIfSame: true })}
+            onSelectWishlistMarker={(item) => openWishlistPlacePanel(item, { toggleIfSame: true })}
+          />
+
+          <PlaceDetailPanel
+            open={!!selectedPlacePanel}
+            isMobile={isMobile}
+            place={selectedPlacePanelPreview}
+            detail={selectedPlaceDetail}
+            isLoading={isLoadingSelectedPlaceDetail}
+            isError={isSelectedPlaceDetailError}
+            currentDay={selectedDay}
+            availableDays={selectedPlaceDayOptions}
+            onClose={closeSelectedPlacePanel}
+            onOpenGoogleMaps={handleOpenSelectedPlaceInGoogleMaps}
+            onDelete={handleDeleteSelectedPlacePanelItem}
+            onAddToItinerary={selectedWishlistPlace ? (visitDay) => handleAddWishlistToItinerary(selectedWishlistPlace, visitDay) : undefined}
           />
           
           {/* Floating Button to Open Itinerary Drawer (Mobile Only) */}
           <Button
             onClick={() => setIsItineraryDrawerOpen(true)}
-            className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-20 shadow-lg"
+            className={`md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-20 shadow-lg ${selectedPlacePanel ? "hidden" : ""}`}
             size="lg"
           >
             <Calendar className="w-5 h-5 mr-2" />
@@ -2074,7 +2264,12 @@ const TripPlanner = () => {
         </div>
 
         {/* Mobile Wishlist Drawer */}
-        <Drawer open={isWishlistDrawerOpen} onOpenChange={setIsWishlistDrawerOpen}>
+        <Drawer open={isWishlistDrawerOpen} onOpenChange={(open) => {
+          setIsWishlistDrawerOpen(open);
+          if (open) {
+            setSelectedPlacePanel(null);
+          }
+        }}>
           <DrawerContent className="md:hidden h-[85vh] flex flex-col">
             <Card className="flex flex-col bg-white border-0 flex-1 overflow-hidden">
               <CardHeader className="flex-shrink-0 p-4 border-b space-y-3">
@@ -2132,7 +2327,7 @@ const TripPlanner = () => {
                         : 'hover:shadow-soft hover:scale-102'
                     }`}
                     onClick={() => {
-                      mapRef.current?.flyToWishlistMarker(item.wishlistItemId);
+                      openWishlistPlacePanel(item);
                       setIsWishlistDrawerOpen(false);
                     }}
                   >
@@ -2211,14 +2406,10 @@ const TripPlanner = () => {
                                       <DropdownMenuItem
                                           key={daySection.visitDay}
                                           onClick={() => {
-                                            addItineraryMutation.mutate({
+                                            void createItineraryAndSync({
                                               visitDay: daySection.visitDay,
-                                              data: {
-                                                placeId: Number(item.placeId) || null,
-                                                title: null,
-                                                time: null,
-                                                memo: null,
-                                              }
+                                              placeId: Number(item.placeId) || null,
+                                              successDescription: "위시리스트에서 일정으로 추가되었습니다.",
                                             });
                                           }}
                                       >
@@ -2326,7 +2517,7 @@ const TripPlanner = () => {
                         : 'hover:shadow-soft hover:scale-102'
                     }`}
                     onClick={() => {
-                      mapRef.current?.flyToWishlistMarker(item.wishlistItemId);
+                      openWishlistPlacePanel(item);
                     }}
                   >
                     <div className="flex-col items-start justify-between gap-2">
@@ -2404,14 +2595,10 @@ const TripPlanner = () => {
                                       <DropdownMenuItem
                                           key={daySection.visitDay}
                                           onClick={() => {
-                                            addItineraryMutation.mutate({
+                                            void createItineraryAndSync({
                                               visitDay: daySection.visitDay,
-                                              data: {
-                                                placeId: Number(item.placeId) || null,
-                                                title: null,
-                                                time: null,
-                                                memo: null,
-                                              }
+                                              placeId: Number(item.placeId) || null,
+                                              successDescription: "위시리스트에서 일정으로 추가되었습니다.",
                                             });
                                           }}
                                       >
@@ -2481,9 +2668,13 @@ const TripPlanner = () => {
         isOpen={createItineraryModal.isOpen}
         onClose={() => setCreateItineraryModal({ isOpen: false, visitDay: 0, dayLabel: "" })}
         onCreateItinerary={(data) => {
-          addItineraryMutation.mutate({
+          void createItineraryAndSync({
             visitDay: createItineraryModal.visitDay,
-            data,
+            placeId: data.placeId,
+            title: data.title,
+            time: data.time,
+            memo: data.memo,
+            successDescription: "일정이 추가되었습니다.",
           });
         }}
         dayLabel={createItineraryModal.dayLabel}
@@ -2631,11 +2822,11 @@ const TripPlanner = () => {
               <div>
                 <label className="text-sm font-medium mb-2 block">시간</label>
                 <Input
-                  type="datetime-local"
-                  value={editingItinerary.time}
+                  type="time"
+                  value={editingItinerary.timeInput}
                   onChange={(e) => setEditingItinerary({
                     ...editingItinerary,
-                    time: e.target.value
+                    timeInput: e.target.value
                   })}
                 />
               </div>
@@ -2663,7 +2854,7 @@ const TripPlanner = () => {
                       visitDay: editingItinerary.visitDay,
                       itemId: editingItinerary.itemId,
                       updates: {
-                        time: editingItinerary.time || undefined,
+                        time: buildVisitDateTimeForDay(editingItinerary.visitDay, editingItinerary.timeInput) || undefined,
                         memo: editingItinerary.memo || undefined
                       }
                     });

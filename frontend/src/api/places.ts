@@ -15,6 +15,25 @@ export interface PlaceSearchResult {
   placeDetailSummary?: PlaceDetailSummary | null;
 }
 
+export interface PlaceDetailResponse {
+  placeId: number;
+  externalPlaceId: string;
+  placeName: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  placeTypeSummary?: PlaceTypeSummary | null;
+  normalizedCategoryKey?: NormalizedPlaceCategoryKey | null;
+  photoHint?: PlacePhotoHint | null;
+  placeDetailSummary?: PlaceDetailSummary | null;
+  formattedPhoneNumber?: string | null;
+  internationalPhoneNumber?: string | null;
+  websiteUri?: string | null;
+  googleMapsUri?: string | null;
+  regularOpeningHoursJson?: string | null;
+  currentOpeningHoursJson?: string | null;
+}
+
 // API functions
 export const placesApi = {
   // Search places using Google Maps API
@@ -34,5 +53,15 @@ export const placesApi = {
       }
     );
     return response.data.data;
-  }
+  },
+
+  getPlaceDetail: async (placeId: number, language: string = "ko"): Promise<PlaceDetailResponse> => {
+    const response = await authenticatedAxios.get<{ data: PlaceDetailResponse }>(
+      `/places/${placeId}`,
+      {
+        params: { language },
+      },
+    );
+    return response.data.data;
+  },
 };
