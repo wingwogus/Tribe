@@ -31,6 +31,10 @@ import java.time.LocalDate
 class TripControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
+    companion object {
+        private const val REGION_CODE = "JP_TOKYO"
+    }
+
     @MockBean
     private lateinit var tripService: TripService
 
@@ -110,8 +114,42 @@ class TripControllerTest(
         )
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.regionCode", equalTo(REGION_CODE)))
             .andExpect(jsonPath("$.data.members[0].nickname", equalTo("guest")))
             .andExpect(jsonPath("$.data.members[0].role", equalTo("GUEST")))
+    }
+
+    @Test
+    fun `createTrip forwards optional regionCode`() {
+        `when`(
+            tripService.createTrip(
+                TripCommand.Create(
+                    "Trip",
+                    LocalDate.of(2026, 4, 12),
+                    LocalDate.of(2026, 4, 13),
+                    "JP",
+                    REGION_CODE,
+                ),
+            ),
+        ).thenReturn(sampleTripDetail())
+
+        mockMvc.perform(
+            post("/api/v1/trips")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "title": "Trip",
+                      "startDate": "2026-04-12",
+                      "endDate": "2026-04-13",
+                      "country": "JP",
+                      "regionCode": "$REGION_CODE"
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.regionCode", equalTo(REGION_CODE)))
     }
 
     @Test
@@ -174,7 +212,7 @@ class TripControllerTest(
         startDate = LocalDate.of(2026, 4, 12),
         endDate = LocalDate.of(2026, 4, 13),
         country = "JP",
-        regionCode = "JP_TOKYO",
+        regionCode = REGION_CODE,
         members = listOf(
             TripResult.MemberSummary(
                 tripMemberId = 1L,

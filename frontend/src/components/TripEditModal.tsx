@@ -6,7 +6,7 @@ import {Label} from "@/components/ui/label";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Country, TripDetail, UpdateTripRequest} from "@/api/trips";
 import {useToast} from "@/hooks/use-toast";
-import { getCountryOptionByCode, getTripRegionsByCountryCode, TRIP_COUNTRY_OPTIONS } from "@/lib/tripRegions";
+import { getCountryOptionByCode, getCountryOptionByCode2, getTripRegionsByCountryCode, TRIP_COUNTRY_OPTIONS } from "@/lib/tripRegions";
 
 interface TripEditModalProps {
   isOpen: boolean;
@@ -32,7 +32,7 @@ export const TripEditModal = ({ isOpen, onClose, trip, onUpdateTrip }: TripEditM
       setTitle(trip.title);
       setStartDate(trip.startDate);
       setEndDate(trip.endDate);
-      const countryOption = TRIP_COUNTRY_OPTIONS.find(opt => opt.code2 === trip.country);
+      const countryOption = getCountryOptionByCode2(trip.country);
       if (countryOption) {
         setCountry(countryOption.code);
       }

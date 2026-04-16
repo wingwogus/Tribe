@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Loader2, Plus, Search} from "lucide-react";
 import {Dialog, DialogContent, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
@@ -26,19 +26,7 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, reg
   const region = getTripRegionByCode(regionCode);
   const regionLabel = getTripRegionLabel(regionCode);
   const resolvedCountryCode = getCountryOptionByCode2(countryCode)?.code2;
-
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const timer = setTimeout(() => {
-        searchPlaces();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setPlaces([]);
-    }
-  }, [countryCode, regionCode, searchQuery]);
-
-  const searchPlaces = async () => {
+  const searchPlaces = useCallback(async () => {
     if (!searchQuery.trim()) return;
     
     setIsLoading(true);
@@ -64,7 +52,18 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, reg
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [region, regionCode, resolvedCountryCode, searchQuery, toast]);
+
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        searchPlaces();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setPlaces([]);
+    }
+  }, [searchPlaces, searchQuery]);
 
   const handleAddPlace = (place: PlaceSearchResult) => {
     onAddPlace(place);
