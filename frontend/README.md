@@ -1,8 +1,29 @@
-# Welcome to your Lovable project
+# Tribe Frontend
+
+This frontend is deployed separately from the backend API.
+
+Production domains:
+- app: `https://tri-be.app`
+- api: `https://api.tri-be.app`
+
+Required production environment variables:
+
+```sh
+VITE_API_BASE_URL=https://api.tri-be.app/api/v1
+VITE_BACKEND_ORIGIN=https://api.tri-be.app
+```
+
+`VITE_API_BASE_URL` controls REST requests. `VITE_BACKEND_ORIGIN` is used for OAuth login and WebSocket connections.
+
+Kakao OAuth should use the backend redirect URI:
+
+```text
+https://api.tri-be.app/login/oauth2/code/kakao
+```
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/53407aa9-cf73-45d9-96de-a330d084bf79
+Lovable project: https://lovable.dev/projects/53407aa9-cf73-45d9-96de-a330d084bf79
 
 ## How can I edit this code?
 
@@ -62,7 +83,7 @@ This project is built with:
 
 ## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/53407aa9-cf73-45d9-96de-a330d084bf79) and click on Share -> Publish.
+Deploy on Vercel with the production environment variables above, then attach the custom domain `tri-be.app`.
 
 ## Can I connect a custom domain to my Lovable project?
 

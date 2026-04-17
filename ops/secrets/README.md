@@ -31,3 +31,8 @@ Expected runtime object names:
 Suggested file naming:
 - `tribe-api-secret.enc.yaml`
 - `tribe-api-config.enc.yaml`
+
+Config conventions:
+- `APP_URL` is the frontend canonical origin consumed by backend CORS, OAuth redirects, websocket origin checks, and invite link generation.
+- For the current production split, set `APP_URL` to `https://tri-be.app`.
+- The backend ingress host is configured separately in Helm and should point to `api.tri-be.app`.

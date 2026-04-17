@@ -12,8 +12,10 @@ export interface ApiResponse<T> {
   error?: ApiError | null;
 }
 
+// Production should inject the full API origin to avoid frontend-origin-relative requests.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 const FALLBACK_ORIGIN = typeof window === "undefined" ? "http://localhost:8081" : window.location.origin;
+// OAuth and WebSocket traffic must always resolve against the backend origin.
 export const BACKEND_ORIGIN = (import.meta.env.VITE_BACKEND_ORIGIN ||
   (API_BASE_URL.startsWith("http") ? new URL(API_BASE_URL).origin : FALLBACK_ORIGIN)).replace(/\/$/, "");
 export const OAUTH_LOGIN_URL = `${BACKEND_ORIGIN}/oauth2/authorization/kakao`;
