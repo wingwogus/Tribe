@@ -9,7 +9,6 @@ import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.chat.ChatMessage
 import com.tribe.domain.chat.ChatMessageRepository
 import com.tribe.domain.trip.core.TripRepository
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -46,17 +45,18 @@ class ChatMessageService(
     fun history(query: ChatMessageQuery.History): ChatMessageResult.History {
         tripAuthorizationPolicy.isTripMember(query.tripId)
         val parsedCursor = CursorCodec.decode(query.cursor)
-        val limit = query.pageSize.coerceIn(1, 100) + 1
+        val pageSize = query.pageSize.coerceIn(1, 100)
+        val limit = pageSize + 1
         val messages = chatMessageRepository.findHistoryPage(
             tripId = query.tripId,
             cursorCreatedAt = parsedCursor?.createdAt,
             cursorId = parsedCursor?.id,
-            org.springframework.data.domain.PageRequest.of(0, limit),
+            limit = limit,
         ).toMutableList()
 
-        val hasNext = messages.size > query.pageSize
+        val hasNext = messages.size > pageSize
         if (hasNext) {
-            messages.removeAt(query.pageSize)
+            messages.removeAt(pageSize)
         }
 
         val content = messages.map(ChatMessageResult.Message::from)
