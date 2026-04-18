@@ -56,6 +56,7 @@ Tribe는 여행의 전 과정을 하나의 흐름으로 연결합니다.
 | **AI & External API** | ![Google Gemini](https://img.shields.io/badge/google%20gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![Google Maps](https://img.shields.io/badge/google%20maps-4285F4?style=for-the-badge&logo=googlemaps&logoColor=white) ![Kakao](https://img.shields.io/badge/kakao-FFCD00.svg?style=for-the-badge&logo=kakaotalk&logoColor=000000) |
 
 ## Service Architecture
+![Tribe Architecture](https://github.com/user-attachments/assets/bd37b422-e0ec-4dbd-b387-2fd1f6b5af1f)
 
 Tribe는 여행의 각 단계를 별도 도메인으로 나누고, 각 도메인이 분명한 책임을 가지도록 설계되어 있습니다.
 계획, 소통, 정산, 회고를 한 시스템 안에서 이어가되, 내부 구현은 서비스 역할 기준으로 분리되어 있습니다.
