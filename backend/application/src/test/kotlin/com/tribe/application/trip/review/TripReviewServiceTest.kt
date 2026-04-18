@@ -8,12 +8,16 @@ import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceSearchService
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.wishlist.WishlistItem
+import com.tribe.domain.member.Member
 import com.tribe.domain.trip.review.RecommendedPlaceRepository
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.trip.core.Trip
+import com.tribe.domain.trip.member.TripRole
 import com.tribe.domain.trip.review.TripReview
 import com.tribe.domain.trip.review.TripReviewRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -21,7 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.doReturn
-import org.mockito.Mockito.any
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
@@ -107,6 +111,39 @@ class TripReviewServiceTest {
     }
 
     @Test
+    fun `createReview uses restored review prompt contract`() {
+        val trip = tripFixture()
+        var capturedPrompt: String? = null
+        `when`(tripRepository.findTripWithFullItineraryById(trip.id)).thenReturn(trip)
+        doAnswer { invocation ->
+            capturedPrompt = invocation.arguments[0] as String
+            "## 테스트 여행 상세 검토 및 제안\n본문"
+        }
+            .`when`(geminiGateway)
+            .generate(org.mockito.ArgumentMatchers.anyString())
+        doAnswer { invocation ->
+            val saved = invocation.arguments[0] as TripReview
+            ReflectionTestUtils.setField(saved, "id", 12L)
+            saved
+        }.`when`(tripReviewRepository).save(org.mockito.ArgumentMatchers.any(TripReview::class.java))
+
+        service.createReview(trip.id, TripReviewCommand.Create(trip.id, "가성비 맛집 탐방"))
+
+        val prompt = capturedPrompt ?: error("Prompt was not captured")
+
+        assertContains(prompt, "당신은 최고의 여행 전문가이자 꼼꼼한 여행 계획 검토자입니다.")
+        assertContains(prompt, "계획 검토를 중단합니다.")
+        assertContains(prompt, "## 테스트 여행 수정 제안")
+        assertContains(prompt, "## 테스트 여행 상세 검토 및 제안")
+        assertContains(prompt, "https://www.google.com/maps/search/?api=1&query=")
+        assertContains(prompt, "[사용자들의 위시리스트]")
+        assertContains(prompt, "오사카 성")
+        assertContains(prompt, "---추천 장소 목록---")
+        assertContains(prompt, "추천 장소 목록 구간에서는 장소 이름만 한 줄에 하나씩 적고")
+        assertContains(prompt, "입력에 없는 사실은 만들지 마세요.")
+    }
+
+    @Test
     fun `createReview fails when AI feedback is missing`() {
         val trip = tripFixture()
         `when`(tripRepository.findTripWithFullItineraryById(trip.id)).thenReturn(trip)
@@ -119,6 +156,26 @@ class TripReviewServiceTest {
         }
 
         assertEquals(ErrorCode.AI_FEEDBACK_ERROR, ex.errorCode)
+    }
+
+    @Test
+    fun `createReview keeps review when separator is missing`() {
+        val trip = tripFixture()
+        `when`(tripRepository.findTripWithFullItineraryById(trip.id)).thenReturn(trip)
+        doReturn("## 테스트 여행 상세 검토 및 제안\n본문만 있습니다.")
+            .`when`(geminiGateway)
+            .generate(org.mockito.ArgumentMatchers.anyString())
+        doAnswer { invocation ->
+            val saved = invocation.arguments[0] as TripReview
+            ReflectionTestUtils.setField(saved, "id", 13L)
+            saved
+        }.`when`(tripReviewRepository).save(org.mockito.ArgumentMatchers.any(TripReview::class.java))
+
+        val result = service.createReview(trip.id, TripReviewCommand.Create(trip.id, "컨셉"))
+
+        assertEquals(13L, result.reviewId)
+        assertEquals(0, result.recommendedPlaces.size)
+        verifyNoInteractions(placeSearchService, placeCatalogService, recommendedPlaceRepository)
     }
 
     @Test
@@ -140,6 +197,14 @@ class TripReviewServiceTest {
         ReflectionTestUtils.setField(trip, "id", 5L)
         val place = Place("seed", "도톤보리", "오사카", BigDecimal.ZERO, BigDecimal.ZERO)
         trip.itineraryItems.add(ItineraryItem(trip, 1, place, null, null, 1, null))
+        val wishlistPlace = Place("wish", "오사카 성", "오사카", BigDecimal.ONE, BigDecimal.ONE)
+        val member = Member(email = "tester@example.com", passwordHash = "pw")
+        val tripMember = trip.addMember(member, TripRole.OWNER)
+        trip.wishlistItems.add(WishlistItem(trip, wishlistPlace, tripMember))
         return trip
+    }
+
+    private fun assertContains(actual: String, expected: String) {
+        assertTrue(actual.contains(expected), "Expected prompt to contain <$expected> but was:\n$actual")
     }
 }

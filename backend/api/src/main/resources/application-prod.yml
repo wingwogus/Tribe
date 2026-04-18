@@ -121,3 +121,8 @@ feign:
       default:
         connectTimeout: 5000
         readTimeout: 10000
+
+trip:
+  review:
+    ai:
+      provider: ${TRIP_REVIEW_AI_PROVIDER:gemini}

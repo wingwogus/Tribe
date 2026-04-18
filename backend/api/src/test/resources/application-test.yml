@@ -76,6 +76,11 @@ gemini:
     key: test-gemini-key
     url: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
 
+ollama:
+  api:
+    url: http://localhost:11434/api/generate
+  model: gemma3
+
 chat:
   redis:
     enabled: false
@@ -96,3 +101,5 @@ tribe:
   trip:
     review:
       enabled: true
+      ai:
+        provider: gemini

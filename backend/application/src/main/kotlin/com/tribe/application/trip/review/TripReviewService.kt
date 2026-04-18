@@ -16,6 +16,8 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Service
 @ConditionalOnProperty(name = ["tribe.trip.review.enabled"], havingValue = "true", matchIfMissing = true)
@@ -116,17 +118,56 @@ class TripReviewService(
                 }
             }
             .joinToString("\n")
+        val wishlistText = trip.wishlistItems
+            .map { wishlistItem -> "    - 이름: ${wishlistItem.place.name}, 주소: ${wishlistItem.place.address}" }
+            .ifEmpty { listOf("    - 없음") }
+            .joinToString("\n")
+        val encodedExampleQuery = URLEncoder.encode("킨류 라멘 도톤보리점", StandardCharsets.UTF_8)
+        val reviewConcept = concept ?: "일반 여행"
 
         return """
-        여행 제목: ${trip.title}
-        여행 국가: ${trip.country.koreanName}
-        여행 기간: ${trip.startDate} ~ ${trip.endDate}
-        여행 콘셉트: ${concept ?: "일반 여행"}
+        당신은 최고의 여행 전문가이자 꼼꼼한 여행 계획 검토자입니다. 주어진 [여행 정보], [상세 일정], [사용자들의 위시리스트]를 바탕으로 여행 계획을 매우 구체적이고 실용적으로 검토해야 합니다.
 
-        상세 일정:
+        반드시 아래 규칙을 따르세요.
+        1. 입력에 없는 사실은 만들지 마세요.
+        2. 입력에 없는 구체 날짜, 지역명, 행정구역, 상호 디테일, 실제 방문 체험, 음식 맛/향/분위기 묘사를 추가하지 마세요.
+        3. 근거가 부족한 판단은 단정하지 말고 보수적으로 표현하세요.
+        4. 공항은 동선 분석에서 제외하세요.
+        5. 추천 장소 목록 구간에서는 장소 이름만 한 줄에 하나씩 적고, bullet, numbering, 설명, 주소, 링크, 후기 문장을 넣지 마세요.
+
+        [단계별 지침]
+        1. 계획의 유효성 검증
+        - 국가 일치 여부를 먼저 확인하세요. [상세 일정]의 주소가 ${trip.country.koreanName} 여행과 맞지 않는 장소가 하나라도 있으면 즉시 리뷰를 중단하고 아래 메시지만 출력하세요.
+          "계획 검토를 중단합니다. '${trip.country.koreanName}' 여행 계획에 다른 국가의 장소인 '[잘못된 장소 이름]'이 포함되어 있습니다. 전체 일정을 다시 확인하고 수정해주세요."
+        - 비현실적인 이동, 과도한 일정, 여행 콘셉트('$reviewConcept')와 실제 일정의 심각한 불일치가 있는지 확인하세요.
+        - 위 문제가 심각하면 상세 리뷰 전에 경고 문단으로 먼저 지적하고 수정을 제안하세요.
+
+        2. 상세 검토 및 제안
+        - 계획에 큰 문제가 없으면 날짜별로 동선 효율성, 일정 현실성, 여행 콘셉트('$reviewConcept') 적합성을 상세하게 분석하세요.
+        - 추천 장소와 맛집은 여행 콘셉트('$reviewConcept')와 직접 관련되어야 하며 ${trip.country.koreanName}에 속한 곳만 추천하세요.
+        - 사용자들의 위시리스트에 있는 장소를 우선 고려하세요.
+        - 추천하는 장소를 본문에 언급할 때는 클릭 가능한 Google Maps 검색 링크를 사용하세요.
+        - 링크 형식은 `https://www.google.com/maps/search/?api=1&query=<URL_ENCODED_PLACE_NAME>` 입니다.
+        - 예시: `[킨류 라멘 金龍ラーメン](https://www.google.com/maps/search/?api=1&query=$encodedExampleQuery)`
+
+        [출력 규칙]
+        1. 국가 불일치가 발견되면 다른 문장 없이 중단 메시지만 출력하세요.
+        2. 수정이 필요한 문제가 발견되면 제목을 `## ${trip.title} 수정 제안`으로 시작하세요.
+        3. 계획에 큰 문제가 없으면 제목을 `## ${trip.title} 상세 검토 및 제안`으로 시작하세요.
+        4. 본문이 끝난 후 반드시 줄바꿈하고 `---추천 장소 목록---` 구분자를 추가하세요.
+        5. 그 다음 줄부터 본문에서 추천한 모든 장소의 이름만 한 줄에 하나씩 정확하게 나열하세요.
+
+        [여행 정보]
+        - 여행 제목: ${trip.title}
+        - 여행 국가: ${trip.country.koreanName}
+        - 여행 기간: ${trip.startDate} ~ ${trip.endDate}
+        - 여행 콘셉트: `$reviewConcept`
+
+        [상세 일정]
         $itineraryText
 
-        아래 형식으로 여행 리뷰를 작성하고 마지막에 '---추천 장소 목록---' 아래에 추천 장소명을 줄 단위로 나열하세요.
+        [사용자들의 위시리스트]
+        $wishlistText
         """.trimIndent()
     }
 }

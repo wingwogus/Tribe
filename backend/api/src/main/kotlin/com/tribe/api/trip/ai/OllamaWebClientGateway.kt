@@ -8,17 +8,17 @@ import org.springframework.web.reactive.function.client.WebClient
 
 @Component
 @ConditionalOnProperty(name = ["tribe.trip.review.enabled"], havingValue = "true", matchIfMissing = true)
-@ConditionalOnProperty(name = ["trip.review.ai.provider"], havingValue = "gemini", matchIfMissing = true)
-class GeminiWebClientGateway(
+@ConditionalOnProperty(name = ["trip.review.ai.provider"], havingValue = "ollama")
+class OllamaWebClientGateway(
     webClientBuilder: WebClient.Builder,
-    @Value("\${gemini.api.key}") private val apiKey: String,
-    @Value("\${gemini.api.url}") private val apiUrl: String,
+    @Value("\${ollama.api.url}") private val apiUrl: String,
+    @Value("\${ollama.model}") private val model: String,
 ) : GeminiGateway {
     private val webClient = webClientBuilder.build()
 
     override fun generate(prompt: String): String? {
         val response = webClient.post()
-            .uri("$apiUrl?key=$apiKey")
+            .uri(apiUrl)
             .bodyValue(buildRequestBody(prompt))
             .retrieve()
             .bodyToMono(Map::class.java)
@@ -30,22 +30,13 @@ class GeminiWebClientGateway(
 
     internal fun buildRequestBody(prompt: String): Map<String, Any> {
         return mapOf(
-            "contents" to listOf(
-                mapOf(
-                    "parts" to listOf(
-                        mapOf("text" to prompt)
-                    )
-                )
-            )
+            "model" to model,
+            "prompt" to prompt,
+            "stream" to false,
         )
     }
 
     internal fun extractResponseText(response: Map<*, *>): String? {
-        val candidates = response["candidates"] as? List<*> ?: return null
-        val first = candidates.firstOrNull() as? Map<*, *> ?: return null
-        val content = first["content"] as? Map<*, *> ?: return null
-        val parts = content["parts"] as? List<*> ?: return null
-        val firstPart = parts.firstOrNull() as? Map<*, *> ?: return null
-        return firstPart["text"] as? String
+        return response["response"] as? String
     }
 }

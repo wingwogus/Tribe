@@ -83,6 +83,11 @@ gemini:
     key: ${GEMINI_API_KEY}
     url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent}
 
+ollama:
+  api:
+    url: ${OLLAMA_API_URL:http://localhost:11434/api/generate}
+  model: ${OLLAMA_MODEL:gemma3}
+
 exchange:
   rate:
     api-url: ${EXCHANGE_RATE_API_URL:https://oapi.koreaexim.go.kr}
@@ -100,3 +105,8 @@ feign:
       default:
         connectTimeout: 5000
         readTimeout: 10000
+
+trip:
+  review:
+    ai:
+      provider: ${TRIP_REVIEW_AI_PROVIDER:gemini}
