@@ -2,7 +2,7 @@ replicaCount: 2
 image:
   repository: docker.io/vantagac/tribe-api
   pullPolicy: IfNotPresent
-  tag: "815d72828ca2caefe65bbe81363f901559e9e8ec"
+  tag: "9c390f697113cfd16ca01a01bff1665098dceb00"
 imagePullSecrets:
 - name: regcred
 nameOverride: ""
