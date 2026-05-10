@@ -19,6 +19,9 @@ spring:
         default_batch_fetch_size: 100
     open-in-view: false
 
+  flyway:
+    enabled: false
+
   cloud:
     compatibility-verifier:
       enabled: false

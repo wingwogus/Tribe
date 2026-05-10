@@ -51,6 +51,12 @@ class AuthSecurityIntegrationTest(
     }
 
     @Test
+    fun `member wishlist endpoint rejects missing token`() {
+        mockMvc.perform(get("/api/v1/members/me/wishlists"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
     fun `protected endpoint accepts valid jwt`() {
         val accessToken = tokenProvider.createAccessToken(42L, "ROLE_USER")
 
