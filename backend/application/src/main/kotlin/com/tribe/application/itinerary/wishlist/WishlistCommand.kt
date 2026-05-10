@@ -12,6 +12,11 @@ object WishlistCommand {
         val longitude: BigDecimal,
     )
 
+    data class AddFromMemberWishlist(
+        val tripId: Long,
+        val memberWishlistItemId: Long,
+    )
+
     data class Delete(
         val tripId: Long,
         val wishlistItemIds: List<Long>,
