@@ -29,6 +29,15 @@ class ItemController(
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(ItemResponses.ItemResponse.from(result)))
     }
 
+    @PostMapping("/from-member-wishlist")
+    fun createItemFromMemberWishlist(
+        @PathVariable tripId: Long,
+        @RequestBody request: ItemRequests.CreateFromMemberWishlistRequest,
+    ): ResponseEntity<ApiResponse<ItemResponses.ItemResponse>> {
+        val result = itemService.createItemFromMemberWishlist(request.toCommand(tripId))
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(ItemResponses.ItemResponse.from(result)))
+    }
+
     @GetMapping
     fun getAllItems(
         @PathVariable tripId: Long,
