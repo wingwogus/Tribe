@@ -31,9 +31,15 @@ object WishlistResult {
         val photoHint: PhotoHint?,
         val placeDetailSummary: PlaceDetailSummary?,
         val adder: Adder,
+        val likeCount: Long = 0L,
+        val likedByMe: Boolean = false,
     ) {
         companion object {
-            fun from(entity: WishlistItem): Item {
+            fun from(
+                entity: WishlistItem,
+                likeCount: Long = 0L,
+                likedByMe: Boolean = false,
+            ): Item {
                 val assembler = PlaceResultAssembler()
                 val placeTypeSummary = assembler.toPlaceTypeSummary(entity.place)
                 return Item(
@@ -52,6 +58,8 @@ object WishlistResult {
                         memberId = entity.adder.member?.id,
                         nickname = entity.adder.name,
                     ),
+                    likeCount = likeCount,
+                    likedByMe = likedByMe,
                 )
             }
         }
@@ -64,5 +72,10 @@ object WishlistResult {
         val totalPages: Int,
         val totalElements: Long,
         val isLast: Boolean,
+    )
+
+    data class LikeSummary(
+        val likeCount: Long,
+        val likedByMe: Boolean,
     )
 }

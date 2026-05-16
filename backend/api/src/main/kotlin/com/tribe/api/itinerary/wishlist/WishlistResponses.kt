@@ -27,6 +27,8 @@ object WishlistResponses {
         val photoHint: PlaceResponses.PhotoHintResponse?,
         val placeDetailSummary: PlaceResponses.PlaceDetailSummaryResponse?,
         val adder: AdderResponse,
+        val likeCount: Long,
+        val likedByMe: Boolean,
     ) {
         companion object {
             fun from(item: WishlistResult.Item) = WishlistItemResponse(
@@ -41,6 +43,8 @@ object WishlistResponses {
                 item.photoHint?.let { PlaceResponses.PhotoHintResponse(it.name, it.photoUri) },
                 item.placeDetailSummary?.let(PlaceResponses.PlaceDetailSummaryResponse::from),
                 AdderResponse.from(item.adder),
+                item.likeCount,
+                item.likedByMe,
             )
         }
     }
@@ -61,6 +65,18 @@ object WishlistResponses {
                 totalPages = page.totalPages,
                 totalElements = page.totalElements,
                 isLast = page.isLast,
+            )
+        }
+    }
+
+    data class WishlistLikeResponse(
+        val likeCount: Long,
+        val likedByMe: Boolean,
+    ) {
+        companion object {
+            fun from(summary: WishlistResult.LikeSummary) = WishlistLikeResponse(
+                likeCount = summary.likeCount,
+                likedByMe = summary.likedByMe,
             )
         }
     }

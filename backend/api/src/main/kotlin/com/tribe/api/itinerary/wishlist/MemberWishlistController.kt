@@ -31,12 +31,15 @@ class MemberWishlistController(
     @GetMapping
     fun getWishlistItems(
         @RequestParam(required = false) query: String?,
+        @RequestParam(required = false) sort: String?,
+        @RequestParam(required = false) wishlistSort: String?,
         pageable: Pageable,
     ): ResponseEntity<ApiResponse<MemberWishlistResponses.MemberWishlistSearchResponse>> {
+        val effectiveSort = wishlistSort ?: sort
         val result = if (query.isNullOrBlank()) {
-            memberWishlistService.getWishlist(pageable)
+            memberWishlistService.getWishlist(pageable, effectiveSort)
         } else {
-            memberWishlistService.searchWishlist(query, pageable)
+            memberWishlistService.searchWishlist(query, pageable, effectiveSort)
         }
         return ResponseEntity.ok(ApiResponse.ok(MemberWishlistResponses.MemberWishlistSearchResponse.from(result)))
     }

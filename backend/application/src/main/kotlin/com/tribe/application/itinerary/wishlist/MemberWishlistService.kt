@@ -6,6 +6,7 @@ import com.tribe.application.itinerary.place.PlaceCatalogService
 import com.tribe.application.itinerary.place.PlaceResultAssembler
 import com.tribe.application.security.CurrentActor
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.wishlist.AccountWishlistSort
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItem
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
 import com.tribe.domain.member.Member
@@ -46,20 +47,23 @@ class MemberWishlistService(
     }
 
     @Transactional(readOnly = true)
-    fun searchWishlist(query: String, pageable: Pageable): MemberWishlistResult.SearchPage {
+    fun searchWishlist(
+        query: String,
+        pageable: Pageable,
+        sort: String? = null,
+    ): MemberWishlistResult.SearchPage {
         val memberId = currentActor.requireUserId()
-        val page = memberWishlistItemRepository.findAllByMember_IdAndPlace_NameContainingIgnoreCase(
-            memberId,
-            query,
-            pageable,
-        )
+        val page = memberWishlistItemRepository.findPageByMember(memberId, query, parseSort(sort), pageable)
         return toSearchPage(page)
     }
 
     @Transactional(readOnly = true)
-    fun getWishlist(pageable: Pageable): MemberWishlistResult.SearchPage {
+    fun getWishlist(
+        pageable: Pageable,
+        sort: String? = null,
+    ): MemberWishlistResult.SearchPage {
         val memberId = currentActor.requireUserId()
-        val page = memberWishlistItemRepository.findAllByMember_Id(memberId, pageable)
+        val page = memberWishlistItemRepository.findPageByMember(memberId, null, parseSort(sort), pageable)
         return toSearchPage(page)
     }
 
@@ -85,6 +89,15 @@ class MemberWishlistService(
             totalElements = page.totalElements,
             isLast = page.isLast,
         )
+
+    private fun parseSort(sort: String?): AccountWishlistSort? =
+        AccountWishlistSort.fromApiValue(sort)
+            ?: sort?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                throw BusinessException(
+                    errorCode = ErrorCode.INVALID_INPUT,
+                    detail = mapOf("field" to "sort", "rejectedValue" to sort),
+                )
+            }
 
     private fun saveWishlistItem(
         member: Member,

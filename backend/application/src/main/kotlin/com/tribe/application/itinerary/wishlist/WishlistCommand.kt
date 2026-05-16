@@ -21,4 +21,9 @@ object WishlistCommand {
         val tripId: Long,
         val wishlistItemIds: List<Long>,
     )
+
+    data class Like(
+        val tripId: Long,
+        val wishlistItemId: Long,
+    )
 }
