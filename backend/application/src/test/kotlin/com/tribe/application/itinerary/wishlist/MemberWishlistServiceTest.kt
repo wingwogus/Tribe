@@ -6,6 +6,7 @@ import com.tribe.application.itinerary.place.PlaceCatalogService
 import com.tribe.application.itinerary.place.PlaceResultAssembler
 import com.tribe.application.security.CurrentActor
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.wishlist.AccountWishlistSort
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItem
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
 import com.tribe.domain.member.Member
@@ -230,7 +231,7 @@ class MemberWishlistServiceTest {
         val pageable = PageRequest.of(0, 10)
         val item = memberWishlistItem(member, place("osaka-castle", "오사카성"), id = 30L)
         `when`(currentActor.requireUserId()).thenReturn(member.id)
-        `when`(memberWishlistItemRepository.findAllByMember_Id(member.id, pageable))
+        `when`(memberWishlistItemRepository.findPageByMember(member.id, null, null, pageable))
             .thenReturn(PageImpl(listOf(item), pageable, 1))
 
         val result = service.getWishlist(pageable)
@@ -244,13 +245,38 @@ class MemberWishlistServiceTest {
         val member = member()
         val pageable = PageRequest.of(0, 10)
         `when`(currentActor.requireUserId()).thenReturn(member.id)
-        `when`(memberWishlistItemRepository.findAllByMember_IdAndPlace_NameContainingIgnoreCase(member.id, "도쿄", pageable))
+        `when`(memberWishlistItemRepository.findPageByMember(member.id, "도쿄", null, pageable))
             .thenReturn(PageImpl(emptyList(), pageable, 0))
 
         val result = service.searchWishlist("도쿄", pageable)
 
         assertEquals(0, result.totalElements)
-        verify(memberWishlistItemRepository).findAllByMember_IdAndPlace_NameContainingIgnoreCase(member.id, "도쿄", pageable)
+        verify(memberWishlistItemRepository).findPageByMember(member.id, "도쿄", null, pageable)
+    }
+
+    @Test
+    fun `getWishlist applies review good sort`() {
+        val member = member()
+        val pageable = PageRequest.of(0, 10)
+        `when`(currentActor.requireUserId()).thenReturn(member.id)
+        `when`(memberWishlistItemRepository.findPageByMember(member.id, null, AccountWishlistSort.REVIEW_GOOD_DESC, pageable))
+            .thenReturn(PageImpl(emptyList(), pageable, 0))
+
+        service.getWishlist(pageable, "review_good_desc")
+
+        verify(memberWishlistItemRepository).findPageByMember(member.id, null, AccountWishlistSort.REVIEW_GOOD_DESC, pageable)
+    }
+
+    @Test
+    fun `getWishlist rejects unknown sort`() {
+        val member = member()
+        `when`(currentActor.requireUserId()).thenReturn(member.id)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.getWishlist(PageRequest.of(0, 10), "unknown_sort")
+        }
+
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
     }
 
     @Test

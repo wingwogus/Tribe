@@ -16,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -84,6 +85,29 @@ class MemberWishlistControllerTest(
             .andExpect(jsonPath("$.data.content[0].externalPlaceId", equalTo("tokyo-tower")))
             .andExpect(jsonPath("$.data.content[0].adder").doesNotExist())
             .andExpect(jsonPath("$.data.totalElements", equalTo(1)))
+    }
+
+    @Test
+    fun `getWishlistItems delegates sort parameter`() {
+        `when`(memberWishlistService.getWishlist(PageRequest.of(0, 10, Sort.by("rating_desc")), "rating_desc"))
+            .thenReturn(samplePage())
+
+        mockMvc.perform(get("/api/v1/members/me/wishlists?page=0&size=10&sort=rating_desc"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.content[0].memberWishlistItemId", equalTo(1)))
+    }
+
+    @Test
+    fun `getWishlistItems delegates wishlistSort without pageable sort pollution`() {
+        `when`(memberWishlistService.getWishlist(PageRequest.of(0, 10), "rating_desc"))
+            .thenReturn(samplePage())
+
+        mockMvc.perform(get("/api/v1/members/me/wishlists?page=0&size=10&wishlistSort=rating_desc"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+
+        verify(memberWishlistService).getWishlist(PageRequest.of(0, 10), "rating_desc")
     }
 
     @Test

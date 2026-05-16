@@ -11,7 +11,11 @@ import com.tribe.application.trip.event.WishlistAction
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItem
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
+import com.tribe.domain.itinerary.wishlist.TripWishlistSort
 import com.tribe.domain.itinerary.wishlist.WishlistItem
+import com.tribe.domain.itinerary.wishlist.WishlistItemLike
+import com.tribe.domain.itinerary.wishlist.WishlistItemLikeCount
+import com.tribe.domain.itinerary.wishlist.WishlistItemLikeRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
@@ -29,10 +33,12 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.any
 import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.test.util.ReflectionTestUtils
@@ -44,6 +50,7 @@ import java.util.Optional
 class WishlistServiceTest {
     @Mock private lateinit var wishlistItemRepository: WishlistItemRepository
     @Mock private lateinit var memberWishlistItemRepository: MemberWishlistItemRepository
+    @Mock private lateinit var wishlistItemLikeRepository: WishlistItemLikeRepository
     @Mock private lateinit var placeCatalogService: PlaceCatalogService
     @Mock private lateinit var tripMemberRepository: TripMemberRepository
     @Mock private lateinit var tripRepository: TripRepository
@@ -60,6 +67,7 @@ class WishlistServiceTest {
         service = WishlistService(
             wishlistItemRepository = wishlistItemRepository,
             memberWishlistItemRepository = memberWishlistItemRepository,
+            wishlistItemLikeRepository = wishlistItemLikeRepository,
             placeCatalogService = placeCatalogService,
             tripMemberRepository = tripMemberRepository,
             tripRepository = tripRepository,
@@ -249,13 +257,145 @@ class WishlistServiceTest {
     fun `searchWishList returns empty page when nothing matches`() {
         val fixture = fixture()
         `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
-        `when`(wishlistItemRepository.findAllByTrip_IdAndPlace_NameContainingIgnoreCase(fixture.trip.id, "도쿄", PageRequest.of(0, 10)))
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findPageByTrip(fixture.trip.id, "도쿄", null, PageRequest.of(0, 10)))
             .thenReturn(PageImpl(emptyList(), PageRequest.of(0, 10), 0))
 
         val result = service.searchWishList(fixture.trip.id, "도쿄", PageRequest.of(0, 10))
 
         assertEquals(0, result.totalElements)
         assertEquals(true, result.content.isEmpty())
+    }
+
+    @Test
+    fun `getWishList applies sort and enriches like summary`() {
+        val fixture = fixture()
+        val item = WishlistItem(fixture.trip, place("tokyo-tower", "도쿄타워"), fixture.tripMember)
+        ReflectionTestUtils.setField(item, "id", 91L)
+        val pageable = PageRequest.of(0, 10)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findPageByTrip(fixture.trip.id, null, TripWishlistSort.LIKE_COUNT_DESC, pageable))
+            .thenReturn(PageImpl(listOf(item), pageable, 1))
+        `when`(wishlistItemLikeRepository.countByWishlistItemIds(listOf(91L)))
+            .thenReturn(listOf(WishlistItemLikeCount(91L, 3L)))
+        `when`(wishlistItemLikeRepository.findLikedWishlistItemIds(fixture.tripMember.id, listOf(91L)))
+            .thenReturn(listOf(91L))
+
+        val result = service.getWishList(fixture.trip.id, pageable, "like_count_desc")
+
+        assertEquals(3L, result.content.first().likeCount)
+        assertEquals(true, result.content.first().likedByMe)
+    }
+
+    @Test
+    fun `getWishList applies review good sort`() {
+        val fixture = fixture()
+        val pageable = PageRequest.of(0, 10)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findPageByTrip(fixture.trip.id, null, TripWishlistSort.REVIEW_GOOD_DESC, pageable))
+            .thenReturn(PageImpl(emptyList(), pageable, 0))
+
+        service.getWishList(fixture.trip.id, pageable, "review_good_desc")
+
+        verify(wishlistItemRepository).findPageByTrip(fixture.trip.id, null, TripWishlistSort.REVIEW_GOOD_DESC, pageable)
+    }
+
+    @Test
+    fun `getWishList rejects unknown sort`() {
+        val fixture = fixture()
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.getWishList(fixture.trip.id, PageRequest.of(0, 10), "unknown_sort")
+        }
+
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `likeWishlistItem rejects duplicate like`() {
+        val fixture = fixture()
+        val item = WishlistItem(fixture.trip, place("tokyo-tower", "도쿄타워"), fixture.tripMember)
+        ReflectionTestUtils.setField(item, "id", 91L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findByIdAndTripId(91L, fixture.trip.id)).thenReturn(item)
+        `when`(wishlistItemLikeRepository.existsByWishlistItem_IdAndTripMember_Id(91L, fixture.tripMember.id))
+            .thenReturn(true)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.likeWishlistItem(WishlistCommand.Like(fixture.trip.id, 91L))
+        }
+
+        assertEquals(ErrorCode.WISHLIST_ITEM_LIKE_ALREADY_EXISTS, ex.errorCode)
+        verify(wishlistItemLikeRepository, never()).saveAndFlush(any(WishlistItemLike::class.java))
+    }
+
+    @Test
+    fun `likeWishlistItem returns current like summary`() {
+        val fixture = fixture()
+        val item = WishlistItem(fixture.trip, place("tokyo-tower", "도쿄타워"), fixture.tripMember)
+        ReflectionTestUtils.setField(item, "id", 91L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findByIdAndTripId(91L, fixture.trip.id)).thenReturn(item)
+        `when`(wishlistItemLikeRepository.existsByWishlistItem_IdAndTripMember_Id(91L, fixture.tripMember.id))
+            .thenReturn(false)
+        `when`(wishlistItemLikeRepository.countByWishlistItem_Id(91L)).thenReturn(3L)
+
+        val result = service.likeWishlistItem(WishlistCommand.Like(fixture.trip.id, 91L))
+
+        assertEquals(3L, result.likeCount)
+        assertEquals(true, result.likedByMe)
+        verify(wishlistItemLikeRepository).saveAndFlush(any(WishlistItemLike::class.java))
+    }
+
+    @Test
+    fun `likeWishlistItem maps duplicate save race to conflict`() {
+        val fixture = fixture()
+        val item = WishlistItem(fixture.trip, place("tokyo-tower", "도쿄타워"), fixture.tripMember)
+        ReflectionTestUtils.setField(item, "id", 91L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findByIdAndTripId(91L, fixture.trip.id)).thenReturn(item)
+        `when`(wishlistItemLikeRepository.existsByWishlistItem_IdAndTripMember_Id(91L, fixture.tripMember.id))
+            .thenReturn(false)
+        `when`(wishlistItemLikeRepository.saveAndFlush(any(WishlistItemLike::class.java)))
+            .thenThrow(DataIntegrityViolationException("duplicate like"))
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.likeWishlistItem(WishlistCommand.Like(fixture.trip.id, 91L))
+        }
+
+        assertEquals(ErrorCode.WISHLIST_ITEM_LIKE_ALREADY_EXISTS, ex.errorCode)
+    }
+
+    @Test
+    fun `unlikeWishlistItem is idempotent after item and member validation`() {
+        val fixture = fixture()
+        val item = WishlistItem(fixture.trip, place("tokyo-tower", "도쿄타워"), fixture.tripMember)
+        ReflectionTestUtils.setField(item, "id", 91L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(tripMemberRepository.findByTripIdAndMemberId(fixture.trip.id, fixture.member.id)).thenReturn(fixture.tripMember)
+        `when`(wishlistItemRepository.findByIdAndTripId(91L, fixture.trip.id)).thenReturn(item)
+        `when`(wishlistItemLikeRepository.countByWishlistItem_Id(91L)).thenReturn(2L)
+
+        val result = service.unlikeWishlistItem(WishlistCommand.Like(fixture.trip.id, 91L))
+
+        assertEquals(2L, result.likeCount)
+        assertEquals(false, result.likedByMe)
+        verify(wishlistItemLikeRepository).deleteByWishlistItemIdAndTripMemberId(91L, fixture.tripMember.id)
     }
 
     @Test
@@ -269,6 +409,21 @@ class WishlistServiceTest {
         }
 
         assertEquals(ErrorCode.WISHLIST_ITEM_NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `deleteWishlistItems deletes likes before wishlist items`() {
+        val fixture = fixture()
+        val ids = listOf(1L, 2L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(wishlistItemRepository.findIdsByTripIdAndIdIn(fixture.trip.id, ids)).thenReturn(ids)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+
+        service.deleteWishlistItems(WishlistCommand.Delete(fixture.trip.id, ids))
+
+        val inOrder = inOrder(wishlistItemLikeRepository, wishlistItemRepository)
+        inOrder.verify(wishlistItemLikeRepository).deleteByWishlistItemIds(ids)
+        inOrder.verify(wishlistItemRepository).deleteAllByIdInBatch(ids)
     }
 
     private fun fixture(): Fixture {

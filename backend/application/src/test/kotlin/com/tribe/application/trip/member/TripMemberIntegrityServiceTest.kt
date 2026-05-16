@@ -14,6 +14,7 @@ import com.tribe.domain.expense.ExpenseRepository
 import com.tribe.domain.expense.ExpenseSplitType
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.wishlist.WishlistItem
+import com.tribe.domain.itinerary.wishlist.WishlistItemLikeRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.trip.core.Country
@@ -42,6 +43,7 @@ class TripMemberIntegrityServiceTest {
     @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var expenseRepository: ExpenseRepository
     @Mock private lateinit var wishlistItemRepository: WishlistItemRepository
+    @Mock private lateinit var wishlistItemLikeRepository: WishlistItemLikeRepository
 
     private lateinit var service: TripMemberIntegrityService
 
@@ -54,6 +56,7 @@ class TripMemberIntegrityServiceTest {
             tripRepository = tripRepository,
             expenseRepository = expenseRepository,
             wishlistItemRepository = wishlistItemRepository,
+            wishlistItemLikeRepository = wishlistItemLikeRepository,
         )
     }
 
@@ -71,6 +74,8 @@ class TripMemberIntegrityServiceTest {
         assertEquals(2, expense.expenseItems.first().assignments.size)
         assertEquals(BigDecimal("5000"), expense.expenseItems.first().assignments.first().amount)
         assertEquals(2, result.members.size)
+        verify(wishlistItemLikeRepository).deleteByTripMemberId(fixture.guest.id)
+        verify(wishlistItemLikeRepository).deleteByWishlistItemAdderId(fixture.guest.id)
         verify(wishlistItemRepository).deleteByAdderId(fixture.guest.id)
     }
 
@@ -100,6 +105,8 @@ class TripMemberIntegrityServiceTest {
         service.leaveTrip(TripCommand.Leave(fixture.trip.id))
 
         assertEquals(TripRole.EXITED, fixture.member.role)
+        verify(wishlistItemLikeRepository).deleteByTripMemberId(fixture.member.id)
+        verify(wishlistItemLikeRepository).deleteByWishlistItemAdderId(fixture.member.id)
         verify(wishlistItemRepository).deleteByAdderId(fixture.member.id)
     }
 
@@ -113,6 +120,8 @@ class TripMemberIntegrityServiceTest {
         service.kickMember(TripCommand.KickMember(fixture.trip.id, fixture.memberUser.id))
 
         assertEquals(TripRole.KICKED, fixture.member.role)
+        verify(wishlistItemLikeRepository).deleteByTripMemberId(fixture.member.id)
+        verify(wishlistItemLikeRepository).deleteByWishlistItemAdderId(fixture.member.id)
         verify(wishlistItemRepository).deleteByAdderId(fixture.member.id)
     }
 
