@@ -12,6 +12,14 @@ object ItemCommand {
         val memo: String? = null,
     )
 
+    data class CreateFromMemberWishlist(
+        val tripId: Long,
+        val memberWishlistItemId: Long,
+        val visitDay: Int,
+        val time: LocalDateTime? = null,
+        val memo: String? = null,
+    )
+
     data class Update(
         val tripId: Long,
         val itemId: Long,

@@ -4,8 +4,13 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.itinerary.place.PlaceCatalogService
 import com.tribe.application.security.CurrentActor
+import com.tribe.application.trip.event.TripRealtimeEvent
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
+import com.tribe.application.trip.event.TripRealtimeEventType
+import com.tribe.application.trip.event.WishlistAction
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.wishlist.MemberWishlistItem
+import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItem
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
@@ -23,6 +28,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.any
+import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
@@ -35,20 +43,23 @@ import java.util.Optional
 @ExtendWith(MockitoExtension::class)
 class WishlistServiceTest {
     @Mock private lateinit var wishlistItemRepository: WishlistItemRepository
+    @Mock private lateinit var memberWishlistItemRepository: MemberWishlistItemRepository
     @Mock private lateinit var placeCatalogService: PlaceCatalogService
     @Mock private lateinit var tripMemberRepository: TripMemberRepository
     @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var memberRepository: MemberRepository
     @Mock private lateinit var currentActor: CurrentActor
     @Mock private lateinit var tripAuthorizationPolicy: com.tribe.application.trip.core.TripAuthorizationPolicy
-    @Mock private lateinit var tripRealtimeEventPublisher: TripRealtimeEventPublisher
+    private lateinit var tripRealtimeEventPublisher: RecordingTripRealtimeEventPublisher
 
     private lateinit var service: WishlistService
 
     @BeforeEach
     fun setUp() {
+        tripRealtimeEventPublisher = RecordingTripRealtimeEventPublisher()
         service = WishlistService(
             wishlistItemRepository = wishlistItemRepository,
+            memberWishlistItemRepository = memberWishlistItemRepository,
             placeCatalogService = placeCatalogService,
             tripMemberRepository = tripMemberRepository,
             tripRepository = tripRepository,
@@ -128,6 +139,113 @@ class WishlistServiceTest {
     }
 
     @Test
+    fun `addWishListFromMemberWishlist creates trip wishlist from owned source`() {
+        val fixture = fixture()
+        val sourcePlace = place("member-wishlist-place", "도쿄타워")
+        val sourceItem = memberWishlistItem(fixture.member, sourcePlace, 99L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(memberRepository.findById(fixture.member.id)).thenReturn(Optional.of(fixture.member))
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.of(fixture.trip))
+        `when`(tripMemberRepository.findByTripAndMember(fixture.trip, fixture.member)).thenReturn(fixture.tripMember)
+        `when`(memberWishlistItemRepository.findByIdAndMemberIdWithPlace(99L, fixture.member.id)).thenReturn(sourceItem)
+        `when`(wishlistItemRepository.existsByTrip_IdAndPlace_ExternalPlaceId(fixture.trip.id, "member-wishlist-place"))
+            .thenReturn(false)
+        `when`(wishlistItemRepository.save(any(WishlistItem::class.java))).thenAnswer { invocation ->
+            val saved = invocation.arguments[0] as WishlistItem
+            ReflectionTestUtils.setField(saved, "id", 70L)
+            saved
+        }
+
+        val result = service.addWishListFromMemberWishlist(
+            WishlistCommand.AddFromMemberWishlist(
+                tripId = fixture.trip.id,
+                memberWishlistItemId = 99L,
+            ),
+        )
+
+        assertEquals(70L, result.wishlistItemId)
+        assertEquals(sourcePlace.id, result.placeId)
+        assertEquals("도쿄타워", result.name)
+        val event = tripRealtimeEventPublisher.events.single()
+        assertEquals(TripRealtimeEventType.WISHLIST, event.type)
+        assertEquals(fixture.trip.id, event.tripId)
+        assertEquals(fixture.member.id, event.actorId)
+        assertEquals(WishlistAction.ADDED, event.wishlist?.action)
+        assertEquals(70L, event.wishlist?.item?.wishlistItemId)
+    }
+
+    @Test
+    fun `addWishListFromMemberWishlist rejects missing or foreign source`() {
+        val fixture = fixture()
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(memberRepository.findById(fixture.member.id)).thenReturn(Optional.of(fixture.member))
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.of(fixture.trip))
+        `when`(tripMemberRepository.findByTripAndMember(fixture.trip, fixture.member)).thenReturn(fixture.tripMember)
+        `when`(memberWishlistItemRepository.findByIdAndMemberIdWithPlace(99L, fixture.member.id)).thenReturn(null)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.addWishListFromMemberWishlist(
+                WishlistCommand.AddFromMemberWishlist(
+                    tripId = fixture.trip.id,
+                    memberWishlistItemId = 99L,
+                ),
+            )
+        }
+
+        assertEquals(ErrorCode.WISHLIST_ITEM_NOT_FOUND, ex.errorCode)
+        verify(wishlistItemRepository, never()).save(any(WishlistItem::class.java))
+    }
+
+    @Test
+    fun `addWishListFromMemberWishlist keeps duplicate trip wishlist rule`() {
+        val fixture = fixture()
+        val sourcePlace = place("existing", "오사카성")
+        val sourceItem = memberWishlistItem(fixture.member, sourcePlace, 99L)
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(memberRepository.findById(fixture.member.id)).thenReturn(Optional.of(fixture.member))
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.of(fixture.trip))
+        `when`(tripMemberRepository.findByTripAndMember(fixture.trip, fixture.member)).thenReturn(fixture.tripMember)
+        `when`(memberWishlistItemRepository.findByIdAndMemberIdWithPlace(99L, fixture.member.id)).thenReturn(sourceItem)
+        `when`(wishlistItemRepository.existsByTrip_IdAndPlace_ExternalPlaceId(fixture.trip.id, "existing"))
+            .thenReturn(true)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.addWishListFromMemberWishlist(
+                WishlistCommand.AddFromMemberWishlist(
+                    tripId = fixture.trip.id,
+                    memberWishlistItemId = 99L,
+                ),
+            )
+        }
+
+        assertEquals(ErrorCode.WISHLIST_ITEM_ALREADY_EXISTS, ex.errorCode)
+        verify(wishlistItemRepository, never()).save(any(WishlistItem::class.java))
+    }
+
+    @Test
+    fun `addWishListFromMemberWishlist rejects non trip member before source lookup`() {
+        val fixture = fixture()
+        doThrow(BusinessException(ErrorCode.NOT_A_TRIP_MEMBER))
+            .`when`(tripAuthorizationPolicy).isTripMember(fixture.trip.id)
+
+        val ex = assertThrows(BusinessException::class.java) {
+            service.addWishListFromMemberWishlist(
+                WishlistCommand.AddFromMemberWishlist(
+                    tripId = fixture.trip.id,
+                    memberWishlistItemId = 99L,
+                ),
+            )
+        }
+
+        assertEquals(ErrorCode.NOT_A_TRIP_MEMBER, ex.errorCode)
+        verify(memberWishlistItemRepository, never()).findByIdAndMemberIdWithPlace(99L, fixture.member.id)
+        verify(wishlistItemRepository, never()).save(any(WishlistItem::class.java))
+    }
+
+    @Test
     fun `searchWishList returns empty page when nothing matches`() {
         val fixture = fixture()
         `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
@@ -160,6 +278,26 @@ class WishlistServiceTest {
         val tripMember = TripMember(member, trip, role = TripRole.MEMBER)
         ReflectionTestUtils.setField(tripMember, "id", 3L)
         return Fixture(trip, member, tripMember)
+    }
+
+    private fun place(externalPlaceId: String, name: String): Place {
+        val place = Place(externalPlaceId, name, "도쿄", BigDecimal.ONE, BigDecimal.TEN)
+        ReflectionTestUtils.setField(place, "id", 80L)
+        return place
+    }
+
+    private fun memberWishlistItem(member: Member, place: Place, id: Long): MemberWishlistItem {
+        val item = MemberWishlistItem(member, place)
+        ReflectionTestUtils.setField(item, "id", id)
+        return item
+    }
+
+    private class RecordingTripRealtimeEventPublisher : TripRealtimeEventPublisher {
+        val events = mutableListOf<TripRealtimeEvent>()
+
+        override fun publish(event: TripRealtimeEvent) {
+            events.add(event)
+        }
     }
 
     private data class Fixture(

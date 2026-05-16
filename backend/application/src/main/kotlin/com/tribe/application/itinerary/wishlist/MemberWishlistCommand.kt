@@ -2,9 +2,8 @@ package com.tribe.application.itinerary.wishlist
 
 import java.math.BigDecimal
 
-object WishlistCommand {
+object MemberWishlistCommand {
     data class Add(
-        val tripId: Long,
         val externalPlaceId: String,
         val placeName: String,
         val address: String?,
@@ -12,13 +11,7 @@ object WishlistCommand {
         val longitude: BigDecimal,
     )
 
-    data class AddFromMemberWishlist(
-        val tripId: Long,
-        val memberWishlistItemId: Long,
-    )
-
     data class Delete(
-        val tripId: Long,
-        val wishlistItemIds: List<Long>,
+        val memberWishlistItemIds: List<Long>,
     )
 }
