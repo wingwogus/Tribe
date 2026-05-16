@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
-interface MemberWishlistItemRepository : JpaRepository<MemberWishlistItem, Long> {
+interface MemberWishlistItemRepository : JpaRepository<MemberWishlistItem, Long>, MemberWishlistItemRepositoryCustom {
     @Query(
         value = """
             select mwi from MemberWishlistItem mwi

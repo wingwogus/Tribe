@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
-interface WishlistItemRepository : JpaRepository<WishlistItem, Long> {
+interface WishlistItemRepository : JpaRepository<WishlistItem, Long>, WishlistItemRepositoryCustom {
     @Query(
         value = """
             select wi from WishlistItem wi
@@ -44,6 +44,12 @@ interface WishlistItemRepository : JpaRepository<WishlistItem, Long> {
 
     @Query("select w.id from WishlistItem w where w.trip.id = :tripId and w.id in :ids")
     fun findIdsByTripIdAndIdIn(@Param("tripId") tripId: Long, @Param("ids") ids: List<Long>): List<Long>
+
+    @Query("select w from WishlistItem w where w.id = :wishlistItemId and w.trip.id = :tripId")
+    fun findByIdAndTripId(
+        @Param("wishlistItemId") wishlistItemId: Long,
+        @Param("tripId") tripId: Long,
+    ): WishlistItem?
 
     @Modifying
     @Query("delete from WishlistItem w where w.adder.id = :adderId")
