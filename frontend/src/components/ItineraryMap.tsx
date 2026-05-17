@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {ItineraryResponse} from '@/api/itinerary';
 import {WishlistItem} from '@/api/wishlist';
+import {PlaceSearchResult} from '@/api/places';
 import {getCountryCoordinates} from '@/lib/countryCoordinates';
 import {getTripRegionCenter} from '@/lib/tripRegions';
 import {getPlaceCategoryColor} from '@/lib/placePresentation';
@@ -10,19 +11,25 @@ import {getPlaceCategoryColor} from '@/lib/placePresentation';
 export interface ItineraryMapHandle {
     focusItineraryMarker: (itineraryId: number, options?: { offsetForPanel?: boolean }) => void;
     focusWishlistMarker: (wishlistItemId: number, options?: { offsetForPanel?: boolean }) => void;
+    getSearchArea: () => { latitude: number; longitude: number; radiusMeters: number } | null;
 }
 
 interface ItineraryMapProps {
     items?: ItineraryResponse[];
     days?: number[];
     wishlistItems?: WishlistItem[];
+    nearbyPlaces?: PlaceSearchResult[];
     tripCountry?: string;
     tripRegionCode?: string | null;
+    nearbyRadiusMeters?: number;
     selectedItineraryId?: number | null;
     selectedWishlistItemId?: number | null;
+    selectedNearbyPlaceExternalId?: string | null;
     panelOffsetPx?: number;
     onSelectItineraryMarker?: (item: ItineraryResponse) => void;
     onSelectWishlistMarker?: (item: WishlistItem) => void;
+    onSelectNearbyPlace?: (place: PlaceSearchResult) => void;
+    onSearchAreaChange?: () => void;
 }
 
 const buildItineraryIcon = (index: number, color: string, isSelected: boolean) => {
@@ -75,6 +82,38 @@ const buildWishlistIcon = (color: string, isSelected: boolean) => {
     });
 };
 
+const buildNearbyIcon = (color: string, isSelected: boolean) => {
+    const size = isSelected ? 34 : 28;
+    const shadow = isSelected ? '0 12px 24px rgba(15,23,42,0.32)' : '0 5px 14px rgba(15,23,42,0.22)';
+
+    return L.divIcon({
+        className: 'custom-nearby-marker',
+        html: `
+          <div style="
+            width: ${size}px;
+            height: ${size}px;
+            border-radius: 999px 999px 999px 6px;
+            background: ${color};
+            border: 3px solid white;
+            box-shadow: ${shadow};
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            <div style="
+              width: ${Math.round(size * 0.36)}px;
+              height: ${Math.round(size * 0.36)}px;
+              border-radius: 999px;
+              background: white;
+            "></div>
+          </div>
+        `,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size],
+    });
+};
+
 const focusMarker = (
     map: L.Map,
     marker: L.Marker,
@@ -105,18 +144,24 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
     ({
         items = [],
         wishlistItems = [],
+        nearbyPlaces = [],
         tripCountry,
         tripRegionCode,
+        nearbyRadiusMeters = 1000,
         selectedItineraryId = null,
         selectedWishlistItemId = null,
+        selectedNearbyPlaceExternalId = null,
         panelOffsetPx = 400,
         onSelectItineraryMarker,
         onSelectWishlistMarker,
+        onSelectNearbyPlace,
+        onSearchAreaChange,
     }, ref) => {
         const mapContainer = useRef<HTMLDivElement>(null);
         const map = useRef<L.Map | null>(null);
         const markersMap = useRef<Map<number, L.Marker>>(new Map());
         const wishlistMarkersMap = useRef<Map<number, L.Marker>>(new Map());
+        const nearbyMarkersMap = useRef<Map<string, L.Marker>>(new Map());
         const polyline = useRef<L.Polyline | null>(null);
         const [hasInitialFit, setHasInitialFit] = useState(false);
 
@@ -146,7 +191,19 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     });
                 }
             },
-        }), [panelOffsetPx]);
+            getSearchArea: () => {
+                if (!map.current) {
+                    return null;
+                }
+
+                const center = map.current.getCenter();
+                return {
+                    latitude: center.lat,
+                    longitude: center.lng,
+                    radiusMeters: nearbyRadiusMeters,
+                };
+            },
+        }), [nearbyRadiusMeters, panelOffsetPx]);
 
         useEffect(() => {
             if (mapContainer.current && !map.current) {
@@ -171,6 +228,18 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                 }
             };
         }, [tripCountry, tripRegionCode]);
+
+        useEffect(() => {
+            if (!map.current) return;
+
+            const currentMap = map.current;
+            const handleSearchAreaChange = () => onSearchAreaChange?.();
+            currentMap.on('moveend zoomend', handleSearchAreaChange);
+
+            return () => {
+                currentMap.off('moveend zoomend', handleSearchAreaChange);
+            };
+        }, [onSearchAreaChange]);
 
         useEffect(() => {
             if (!map.current) return;
@@ -239,6 +308,25 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                 wishlistMarkersMap.current.set(item.wishlistItemId, marker);
             });
         }, [onSelectWishlistMarker, selectedWishlistItemId, wishlistItems]);
+
+        useEffect(() => {
+            if (!map.current) return;
+
+            nearbyMarkersMap.current.forEach((marker) => marker.remove());
+            nearbyMarkersMap.current.clear();
+
+            nearbyPlaces.forEach((place) => {
+                const markerColor = getPlaceCategoryColor(place.placeTypeSummary, place.normalizedCategoryKey);
+                const isSelected = place.externalPlaceId === selectedNearbyPlaceExternalId;
+                const marker = L.marker([place.latitude, place.longitude], {
+                    icon: buildNearbyIcon(markerColor, isSelected),
+                    zIndexOffset: isSelected ? 125 : -50,
+                }).addTo(map.current!);
+
+                marker.on('click', () => onSelectNearbyPlace?.(place));
+                nearbyMarkersMap.current.set(place.externalPlaceId, marker);
+            });
+        }, [nearbyPlaces, onSelectNearbyPlace, selectedNearbyPlaceExternalId]);
 
         return (
             <div className="relative w-full h-full rounded-lg overflow-hidden shadow-soft z-0">

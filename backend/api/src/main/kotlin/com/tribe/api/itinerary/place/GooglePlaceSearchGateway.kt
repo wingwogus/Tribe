@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
+import com.tribe.application.itinerary.place.NearbyPlaceCategory
 import com.tribe.application.itinerary.place.PlacePhotoMedia
 import com.tribe.application.itinerary.place.PlaceResultAssembler
 import com.tribe.application.itinerary.place.PlaceSearchContext
@@ -27,6 +28,8 @@ class GooglePlaceSearchGateway(
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        internal const val NEARBY_FIELD_MASK =
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -40,10 +43,7 @@ class GooglePlaceSearchGateway(
         val response = webClient.post()
             .uri("https://places.googleapis.com/v1/places:searchText")
             .header("X-Goog-Api-Key", apiKey)
-            .header(
-                "X-Goog-FieldMask",
-                "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types",
-            )
+            .header("X-Goog-FieldMask", NEARBY_FIELD_MASK)
             .bodyValue(body)
             .retrieve()
             .bodyToMono(PlacesResponse::class.java)
@@ -62,17 +62,35 @@ class GooglePlaceSearchGateway(
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
         return response.places?.map {
-            val placeTypeSummary = PlaceResultAssembler.fromRawTypes(it.primaryType, it.types ?: emptyList())
-            PlaceSearchGateway.SearchHit(
-                externalPlaceId = it.id,
-                placeName = it.displayName?.text ?: "이름 없음",
-                address = it.formattedAddress ?: "주소 정보 없음",
-                latitude = it.location?.latitude ?: 0.0,
-                longitude = it.location?.longitude ?: 0.0,
-                primaryType = placeTypeSummary?.primaryType,
-                types = placeTypeSummary?.types ?: emptyList(),
-            )
+            toSearchHit(it)
         } ?: emptyList()
+    }
+
+    override fun searchNearby(request: PlaceSearchGateway.NearbySearchRequest): List<PlaceSearchGateway.SearchHit> {
+        val body = buildNearbySearchRequestBody(request)
+
+        val response = webClient.post()
+            .uri("https://places.googleapis.com/v1/places:searchNearby")
+            .header("X-Goog-Api-Key", apiKey)
+            .header("X-Goog-FieldMask", NEARBY_FIELD_MASK)
+            .bodyValue(body)
+            .retrieve()
+            .bodyToMono(PlacesResponse::class.java)
+            .doOnError(WebClientResponseException::class.java) { ex ->
+                logger.error(
+                    "Google Places searchNearby failed: status={}, category={}, radiusMeters={}, body={}",
+                    ex.statusCode.value(),
+                    request.category.name,
+                    request.radiusMeters,
+                    ex.responseBodyAsString,
+                    ex,
+                )
+            }
+            .doOnError { logger.error("Error calling Google Places Nearby API", it) }
+            .block()
+            ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
+
+        return response.places?.map { toSearchHit(it) } ?: emptyList()
     }
 
     override fun getPlaceDetails(externalPlaceId: String, language: String): PlaceSearchGateway.DetailsPayload? {
@@ -238,6 +256,41 @@ class GooglePlaceSearchGateway(
         }
     }
 
+    internal fun buildNearbySearchRequestBody(
+        request: PlaceSearchGateway.NearbySearchRequest,
+    ): Map<String, Any> {
+        return buildMap {
+            put("includedTypes", googleIncludedTypesFor(request.category))
+            put("maxResultCount", request.maxResultCount)
+            put("languageCode", request.language)
+            request.region?.let { put("regionCode", it) }
+            put(
+                "locationRestriction",
+                mapOf(
+                    "circle" to mapOf(
+                        "center" to mapOf(
+                            "latitude" to request.latitude,
+                            "longitude" to request.longitude,
+                        ),
+                        "radius" to request.radiusMeters,
+                    ),
+                ),
+            )
+        }
+    }
+
+    internal fun googleIncludedTypesFor(category: NearbyPlaceCategory): List<String> = when (category) {
+        NearbyPlaceCategory.RESTAURANT -> listOf("restaurant")
+        NearbyPlaceCategory.CAFE -> listOf("cafe", "coffee_shop")
+        NearbyPlaceCategory.BAKERY -> listOf("bakery")
+        NearbyPlaceCategory.BAR -> listOf("bar", "pub")
+        NearbyPlaceCategory.ATTRACTION -> listOf("tourist_attraction")
+        NearbyPlaceCategory.SHOPPING -> listOf("shopping_mall", "department_store", "market", "store")
+        NearbyPlaceCategory.PARK -> listOf("park")
+        NearbyPlaceCategory.MUSEUM -> listOf("museum", "art_gallery")
+        NearbyPlaceCategory.STAY -> listOf("hotel", "hostel", "lodging", "resort_hotel")
+    }
+
     private fun searchRoutePlaceByName(name: String?): PlaceSearchGateway.SearchHit? {
         val normalizedName = name?.trim()?.takeIf { it.isNotBlank() } ?: return null
         return search(normalizedName, "ko", PlaceSearchContext(regionCode = null)).firstOrNull()
@@ -251,6 +304,19 @@ class GooglePlaceSearchGateway(
         "PRICE_LEVEL_EXPENSIVE" -> 3
         "PRICE_LEVEL_VERY_EXPENSIVE" -> 4
         else -> null
+    }
+
+    private fun toSearchHit(place: PlacesResponse.PlaceResult): PlaceSearchGateway.SearchHit {
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = place.location?.latitude ?: 0.0,
+            longitude = place.location?.longitude ?: 0.0,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+        )
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -278,7 +344,6 @@ class GooglePlaceSearchGateway(
             val text: String,
             val languageCode: String?,
         )
-
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

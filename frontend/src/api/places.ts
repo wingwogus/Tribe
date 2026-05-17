@@ -34,6 +34,27 @@ export interface PlaceDetailResponse {
   currentOpeningHoursJson?: string | null;
 }
 
+export type NearbyPlaceCategory =
+  | "RESTAURANT"
+  | "CAFE"
+  | "BAKERY"
+  | "BAR"
+  | "ATTRACTION"
+  | "SHOPPING"
+  | "PARK"
+  | "MUSEUM"
+  | "STAY";
+
+export interface NearbyPlaceSearchRequest {
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  maxResultCount: number;
+  category: NearbyPlaceCategory;
+  language?: string;
+  region?: string;
+}
+
 // API functions
 export const placesApi = {
   // Search places using Google Maps API
@@ -51,6 +72,14 @@ export const placesApi = {
       { 
         params: { query, region, latitude, longitude, radiusMeters, regionContextKey, language } 
       }
+    );
+    return response.data.data;
+  },
+
+  searchNearby: async (request: NearbyPlaceSearchRequest): Promise<PlaceSearchResult[]> => {
+    const response = await authenticatedAxios.post<{ data: PlaceSearchResult[] }>(
+      '/places/nearby',
+      request,
     );
     return response.data.data;
   },

@@ -1,5 +1,6 @@
 package com.tribe.api.itinerary.place
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceTypeSummary
@@ -56,7 +57,9 @@ object PlaceResponses {
         val longitude: Double,
         val placeTypeSummary: PlaceTypeSummaryResponse? = null,
         val normalizedCategoryKey: String? = null,
+        @field:JsonInclude(JsonInclude.Include.NON_NULL)
         val photoHint: PhotoHintResponse? = null,
+        @field:JsonInclude(JsonInclude.Include.NON_NULL)
         val placeDetailSummary: PlaceDetailSummaryResponse? = null,
     ) {
         companion object {
@@ -71,6 +74,13 @@ object PlaceResponses {
                 normalizedCategoryKey = result.normalizedCategoryKey?.name,
                 photoHint = result.photoHint?.let(PhotoHintResponse::from),
                 placeDetailSummary = result.placeDetailSummary?.let(PlaceDetailSummaryResponse::from),
+            )
+
+            fun fromNearby(result: PlaceResult.SearchItem) = from(
+                result.copy(
+                    photoHint = null,
+                    placeDetailSummary = null,
+                ),
             )
         }
     }

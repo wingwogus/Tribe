@@ -43,7 +43,18 @@ interface PlaceSearchGateway {
         val sequenceNo: Int,
     )
 
+    data class NearbySearchRequest(
+        val latitude: Double,
+        val longitude: Double,
+        val radiusMeters: Int,
+        val maxResultCount: Int,
+        val category: NearbyPlaceCategory,
+        val language: String,
+        val region: String?,
+    )
+
     fun search(query: String?, language: String, context: PlaceSearchContext): List<SearchHit>
+    fun searchNearby(request: NearbySearchRequest): List<SearchHit>
     fun getPlaceDetails(externalPlaceId: String, language: String): DetailsPayload?
     fun getPhoto(photoName: String, maxWidthPx: Int = 320): PlacePhotoMedia?
     fun directions(originPlaceId: String, destinationPlaceId: String, travelMode: String): RouteDetails?

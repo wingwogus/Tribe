@@ -4,6 +4,7 @@ import {useNavigate, useParams} from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRightLeft,
+  BedDouble,
   Calculator,
   Calendar,
   Check,
@@ -11,21 +12,32 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  Coffee,
   Copy,
+  Croissant,
   DollarSign,
   Edit3,
   ExternalLink,
   GripVertical,
   HelpCircle,
+  Landmark,
   Loader2,
+  MapPin,
   MoreVertical,
   MoveRight,
   Plus,
+  Search,
+  ShoppingBag,
   Sparkles,
   Star,
+  TreePine,
   Trash2,
+  Utensils,
   Users,
   MessageCircle,
+  Wine,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import {getGoogleMapsSearchUrl, openGoogleMaps} from "@/lib/googleMaps";
 import {
@@ -87,7 +99,7 @@ import {
 } from "@/api/expenses";
 import {Badge} from "@/components/ui/badge";
 import {settlementApi} from "@/api/settlement";
-import {PlaceSearchResult, placesApi} from "@/api/places";
+import {NearbyPlaceCategory, PlaceSearchResult, placesApi} from "@/api/places";
 import {getMemberInfo} from "@/api/auth";
 import {useToast} from "@/hooks/use-toast";
 import {useIsMobile} from "@/hooks/use-mobile";
@@ -117,7 +129,25 @@ import {
   getPlaceTypeLabelFromKey,
   matchesPlaceTypeFilter,
 } from "@/lib/placePresentation";
-import {formatTripDestination} from "@/lib/tripRegions";
+import {formatTripDestination, getCountryOptionByCode2} from "@/lib/tripRegions";
+
+const NEARBY_CATEGORY_OPTIONS: { value: NearbyPlaceCategory; label: string; Icon: LucideIcon }[] = [
+  { value: "RESTAURANT", label: "음식점", Icon: Utensils },
+  { value: "CAFE", label: "카페", Icon: Coffee },
+  { value: "BAKERY", label: "베이커리", Icon: Croissant },
+  { value: "BAR", label: "바", Icon: Wine },
+  { value: "ATTRACTION", label: "명소", Icon: Landmark },
+  { value: "SHOPPING", label: "쇼핑", Icon: ShoppingBag },
+  { value: "PARK", label: "공원", Icon: TreePine },
+  { value: "MUSEUM", label: "박물관", Icon: Landmark },
+  { value: "STAY", label: "숙소", Icon: BedDouble },
+];
+
+const NEARBY_RADIUS_OPTIONS = [500, 1000, 2000, 5000] as const;
+const DEFAULT_NEARBY_RADIUS_METERS = 1000 satisfies (typeof NEARBY_RADIUS_OPTIONS)[number];
+
+const formatNearbyRadiusLabel = (radiusMeters: number) =>
+  radiusMeters >= 1000 ? `${radiusMeters / 1000}km` : `${radiusMeters}m`;
 
 type DaySection = {
   visitDay: number;
@@ -664,6 +694,13 @@ const TripPlanner = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlaceTypeFilter, setSelectedPlaceTypeFilter] = useState("ALL");
   const [selectedPlacePanel, setSelectedPlacePanel] = useState<SelectedPlacePanelState | null>(null);
+  const [selectedNearbyCategory, setSelectedNearbyCategory] = useState<NearbyPlaceCategory>("CAFE");
+  const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState<(typeof NEARBY_RADIUS_OPTIONS)[number]>(DEFAULT_NEARBY_RADIUS_METERS);
+  const [nearbyResults, setNearbyResults] = useState<PlaceSearchResult[]>([]);
+  const [selectedNearbyPlaceExternalId, setSelectedNearbyPlaceExternalId] = useState<string | null>(null);
+  const [isNearbyLoading, setIsNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState<string | null>(null);
+  const nearbySearchRequestIdRef = useRef(0);
   
   // Debounce wishlist search
   useEffect(() => {
@@ -919,6 +956,74 @@ const TripPlanner = () => {
       setSelectedPlacePanel(null);
     }
   }, [selectedDay, selectedItineraryPlace, selectedPlacePanel]);
+
+  const clearNearbyResults = useCallback(() => {
+    nearbySearchRequestIdRef.current += 1;
+    setNearbyResults([]);
+    setSelectedNearbyPlaceExternalId(null);
+    setNearbyError(null);
+  }, []);
+
+  const handleSearchNearby = useCallback(async (overrides?: {
+    category?: NearbyPlaceCategory;
+    radiusMeters?: (typeof NEARBY_RADIUS_OPTIONS)[number];
+  }) => {
+    const searchArea = mapRef.current?.getSearchArea();
+    if (!searchArea) {
+      setNearbyError("지도가 준비된 뒤 다시 시도해주세요.");
+      return;
+    }
+
+    const requestId = nearbySearchRequestIdRef.current + 1;
+    nearbySearchRequestIdRef.current = requestId;
+    const category = overrides?.category ?? selectedNearbyCategory;
+    const radiusMeters = overrides?.radiusMeters ?? nearbyRadiusMeters;
+
+    setIsNearbyLoading(true);
+    setNearbyError(null);
+    setNearbyResults([]);
+    setSelectedNearbyPlaceExternalId(null);
+
+    try {
+      const region = getCountryOptionByCode2(tripDetail?.country)?.code2 ?? tripDetail?.country;
+      const results = await placesApi.searchNearby({
+        ...searchArea,
+        radiusMeters,
+        maxResultCount: 10,
+        category,
+        language: "ko",
+        region,
+      });
+      if (nearbySearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      setNearbyResults(results);
+    } catch (error) {
+      if (nearbySearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      setNearbyError(readApiErrorMessage(error, "주변 장소를 불러오지 못했습니다."));
+    } finally {
+      if (nearbySearchRequestIdRef.current === requestId) {
+        setIsNearbyLoading(false);
+      }
+    }
+  }, [nearbyRadiusMeters, selectedNearbyCategory, tripDetail?.country]);
+
+  const handleNearbyCategoryChange = useCallback((category: NearbyPlaceCategory) => {
+    setSelectedNearbyCategory(category);
+    void handleSearchNearby({ category });
+  }, [handleSearchNearby]);
+
+  const handleNearbyRadiusChange = useCallback((radiusMeters: number) => {
+    if (!NEARBY_RADIUS_OPTIONS.includes(radiusMeters as (typeof NEARBY_RADIUS_OPTIONS)[number])) {
+      return;
+    }
+
+    const nextRadius = radiusMeters as (typeof NEARBY_RADIUS_OPTIONS)[number];
+    setNearbyRadiusMeters(nextRadius);
+    clearNearbyResults();
+  }, [clearNearbyResults]);
 
   // Directions query
   const { data: directionsData = [] } = useQuery({
@@ -2228,13 +2333,17 @@ const TripPlanner = () => {
             items={itineraryItems.filter(item => item.visitDay === selectedDay)}
             days={Array.from({ length: totalDays }, (_, index) => index + 1)}
             wishlistItems={wishlistItems}
+            nearbyPlaces={nearbyResults}
             tripCountry={tripDetail?.country}
             tripRegionCode={tripDetail?.regionCode}
+            nearbyRadiusMeters={nearbyRadiusMeters}
             selectedItineraryId={selectedPlacePanel?.mode === "itinerary" ? selectedPlacePanel.itineraryId ?? null : null}
             selectedWishlistItemId={selectedPlacePanel?.mode === "wishlist" ? selectedPlacePanel.wishlistItemId ?? null : null}
+            selectedNearbyPlaceExternalId={selectedNearbyPlaceExternalId}
             panelOffsetPx={400}
             onSelectItineraryMarker={(item) => openItineraryPlacePanel(item, { toggleIfSame: true })}
             onSelectWishlistMarker={(item) => openWishlistPlacePanel(item, { toggleIfSame: true })}
+            onSelectNearbyPlace={(place) => setSelectedNearbyPlaceExternalId(place.externalPlaceId)}
           />
 
           <PlaceDetailPanel
@@ -2251,6 +2360,136 @@ const TripPlanner = () => {
             onDelete={handleDeleteSelectedPlacePanelItem}
             onAddToItinerary={selectedWishlistPlace ? (visitDay) => handleAddWishlistToItinerary(selectedWishlistPlace, visitDay) : undefined}
           />
+
+          <div className="absolute left-3 right-3 top-3 z-10 flex flex-col gap-2 md:left-4 md:right-4 md:top-4">
+            <div className="flex max-w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-fit md:max-w-[calc(100%-420px)]">
+              {NEARBY_CATEGORY_OPTIONS.map((option) => {
+                const CategoryIcon = option.Icon;
+                const isActive = selectedNearbyCategory === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => handleNearbyCategoryChange(option.value)}
+                    className={`flex h-10 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold shadow-sm transition ${
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-white text-foreground hover:border-primary/50 hover:bg-primary/5"
+                    }`}
+                  >
+                    <CategoryIcon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex w-fit max-w-full items-center gap-2">
+              <div className="flex items-center gap-2 rounded-full border border-border bg-white px-3">
+                <MapPin className="h-4 w-4 text-primary" />
+                <select
+                  value={nearbyRadiusMeters}
+                  onChange={(event) => handleNearbyRadiusChange(Number(event.target.value))}
+                  className="h-9 bg-transparent pr-1 text-sm font-medium outline-none"
+                  aria-label="주변 검색 반경"
+                >
+                  {NEARBY_RADIUS_OPTIONS.map((radiusMeters) => (
+                    <option key={radiusMeters} value={radiusMeters}>
+                      {formatNearbyRadiusLabel(radiusMeters)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void handleSearchNearby()}
+                disabled={isNearbyLoading}
+                className="h-9 rounded-full px-4"
+              >
+                {isNearbyLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="mr-2 h-4 w-4" />
+                )}
+                검색
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearNearbyResults}
+                disabled={isNearbyLoading && nearbyResults.length === 0}
+                className="h-9 rounded-full px-3"
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">주변 결과 지우기</span>
+              </Button>
+            </div>
+
+            {nearbyError && (
+              <p className="w-fit max-w-full rounded-full bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground shadow-lg">
+                {nearbyError}
+              </p>
+            )}
+          </div>
+
+          {nearbyResults.length > 0 && (
+            <Card className="absolute bottom-4 right-4 top-32 z-10 flex w-[min(calc(100%-2rem),380px)] flex-col overflow-hidden bg-white/95 shadow-lg backdrop-blur max-md:left-4 max-md:top-auto max-md:bottom-20 max-md:max-h-[48vh] max-md:w-auto">
+              <CardHeader className="flex-shrink-0 border-b p-3">
+                <CardTitle className="flex items-center justify-between gap-3 text-sm">
+                  <span>주변 결과 {nearbyResults.length}곳</span>
+                  <Badge variant="secondary" className="shrink-0">
+                    {NEARBY_CATEGORY_OPTIONS.find((option) => option.value === selectedNearbyCategory)?.label}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                {nearbyResults.map((place) => {
+                  const isSelected = place.externalPlaceId === selectedNearbyPlaceExternalId;
+                  return (
+                    <div
+                      key={place.externalPlaceId}
+                      className={`rounded-md border p-3 transition ${
+                        isSelected ? "border-primary bg-primary/5" : "bg-white"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="block w-full text-left"
+                        onClick={() => setSelectedNearbyPlaceExternalId(place.externalPlaceId)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{place.placeName}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{place.address}</p>
+                          </div>
+                          {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey) && (
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">
+                              {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey)}
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 w-full"
+                        onClick={() => addWishlistMutation.mutate(place)}
+                        disabled={addWishlistMutation.isPending}
+                      >
+                        {addWishlistMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Plus className="mr-2 h-4 w-4" />
+                        )}
+                        위시리스트에 추가
+                      </Button>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
           
           {/* Floating Button to Open Itinerary Drawer (Mobile Only) */}
           <Button

@@ -7,6 +7,8 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -29,6 +31,22 @@ class PlaceController(
     ): ResponseEntity<ApiResponse<List<PlaceResponses.SearchResponse>>> {
         val result = placeSearchService.search(query, language, region, latitude, longitude, radiusMeters, regionContextKey)
             .map(PlaceResponses.SearchResponse::from)
+        return ResponseEntity.ok(ApiResponse.ok(result))
+    }
+
+    @PostMapping("/nearby")
+    fun searchNearbyPlaces(
+        @RequestBody request: PlaceRequests.NearbySearchRequest,
+    ): ResponseEntity<ApiResponse<List<PlaceResponses.SearchResponse>>> {
+        val result = placeSearchService.searchNearby(
+            latitude = request.latitude,
+            longitude = request.longitude,
+            radiusMeters = request.radiusMeters,
+            maxResultCount = request.maxResultCount,
+            category = request.category,
+            language = request.language,
+            region = request.region,
+        ).map(PlaceResponses.SearchResponse::fromNearby)
         return ResponseEntity.ok(ApiResponse.ok(result))
     }
 
