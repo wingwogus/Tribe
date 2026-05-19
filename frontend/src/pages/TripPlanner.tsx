@@ -143,11 +143,16 @@ const NEARBY_CATEGORY_OPTIONS: { value: NearbyPlaceCategory; label: string; Icon
   { value: "STAY", label: "숙소", Icon: BedDouble },
 ];
 
-const NEARBY_RADIUS_OPTIONS = [500, 1000, 2000, 5000] as const;
-const DEFAULT_NEARBY_RADIUS_METERS = 1000 satisfies (typeof NEARBY_RADIUS_OPTIONS)[number];
+const DEFAULT_NEARBY_RADIUS_METERS = 1000;
 
-const formatNearbyRadiusLabel = (radiusMeters: number) =>
-  radiusMeters >= 1000 ? `${radiusMeters / 1000}km` : `${radiusMeters}m`;
+const formatNearbyRadiusLabel = (radiusMeters: number) => {
+  if (radiusMeters < 1000) {
+    return `${radiusMeters}m`;
+  }
+
+  const kilometers = radiusMeters / 1000;
+  return `${Number.isInteger(kilometers) ? kilometers : kilometers.toFixed(1)}km`;
+};
 
 type DaySection = {
   visitDay: number;
@@ -695,7 +700,7 @@ const TripPlanner = () => {
   const [selectedPlaceTypeFilter, setSelectedPlaceTypeFilter] = useState("ALL");
   const [selectedPlacePanel, setSelectedPlacePanel] = useState<SelectedPlacePanelState | null>(null);
   const [selectedNearbyCategory, setSelectedNearbyCategory] = useState<NearbyPlaceCategory>("CAFE");
-  const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState<(typeof NEARBY_RADIUS_OPTIONS)[number]>(DEFAULT_NEARBY_RADIUS_METERS);
+  const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState(DEFAULT_NEARBY_RADIUS_METERS);
   const [nearbyResults, setNearbyResults] = useState<PlaceSearchResult[]>([]);
   const [selectedNearbyPlaceExternalId, setSelectedNearbyPlaceExternalId] = useState<string | null>(null);
   const [isNearbyLoading, setIsNearbyLoading] = useState(false);
@@ -966,7 +971,6 @@ const TripPlanner = () => {
 
   const handleSearchNearby = useCallback(async (overrides?: {
     category?: NearbyPlaceCategory;
-    radiusMeters?: (typeof NEARBY_RADIUS_OPTIONS)[number];
   }) => {
     const searchArea = mapRef.current?.getSearchArea();
     if (!searchArea) {
@@ -977,7 +981,7 @@ const TripPlanner = () => {
     const requestId = nearbySearchRequestIdRef.current + 1;
     nearbySearchRequestIdRef.current = requestId;
     const category = overrides?.category ?? selectedNearbyCategory;
-    const radiusMeters = overrides?.radiusMeters ?? nearbyRadiusMeters;
+    setNearbyRadiusMeters(searchArea.radiusMeters);
 
     setIsNearbyLoading(true);
     setNearbyError(null);
@@ -988,8 +992,7 @@ const TripPlanner = () => {
       const region = getCountryOptionByCode2(tripDetail?.country)?.code2 ?? tripDetail?.country;
       const results = await placesApi.searchNearby({
         ...searchArea,
-        radiusMeters,
-        maxResultCount: 10,
+        maxResultCount: 20,
         category,
         language: "ko",
         region,
@@ -1008,20 +1011,20 @@ const TripPlanner = () => {
         setIsNearbyLoading(false);
       }
     }
-  }, [nearbyRadiusMeters, selectedNearbyCategory, tripDetail?.country]);
+  }, [selectedNearbyCategory, tripDetail?.country]);
 
   const handleNearbyCategoryChange = useCallback((category: NearbyPlaceCategory) => {
     setSelectedNearbyCategory(category);
     void handleSearchNearby({ category });
   }, [handleSearchNearby]);
 
-  const handleNearbyRadiusChange = useCallback((radiusMeters: number) => {
-    if (!NEARBY_RADIUS_OPTIONS.includes(radiusMeters as (typeof NEARBY_RADIUS_OPTIONS)[number])) {
+  const handleNearbySearchAreaChange = useCallback(() => {
+    const searchArea = mapRef.current?.getSearchArea();
+    if (!searchArea) {
       return;
     }
 
-    const nextRadius = radiusMeters as (typeof NEARBY_RADIUS_OPTIONS)[number];
-    setNearbyRadiusMeters(nextRadius);
+    setNearbyRadiusMeters(searchArea.radiusMeters);
     clearNearbyResults();
   }, [clearNearbyResults]);
 
@@ -2336,7 +2339,6 @@ const TripPlanner = () => {
             nearbyPlaces={nearbyResults}
             tripCountry={tripDetail?.country}
             tripRegionCode={tripDetail?.regionCode}
-            nearbyRadiusMeters={nearbyRadiusMeters}
             selectedItineraryId={selectedPlacePanel?.mode === "itinerary" ? selectedPlacePanel.itineraryId ?? null : null}
             selectedWishlistItemId={selectedPlacePanel?.mode === "wishlist" ? selectedPlacePanel.wishlistItemId ?? null : null}
             selectedNearbyPlaceExternalId={selectedNearbyPlaceExternalId}
@@ -2344,6 +2346,7 @@ const TripPlanner = () => {
             onSelectItineraryMarker={(item) => openItineraryPlacePanel(item, { toggleIfSame: true })}
             onSelectWishlistMarker={(item) => openWishlistPlacePanel(item, { toggleIfSame: true })}
             onSelectNearbyPlace={(place) => setSelectedNearbyPlaceExternalId(place.externalPlaceId)}
+            onSearchAreaChange={handleNearbySearchAreaChange}
           />
 
           <PlaceDetailPanel
@@ -2386,20 +2389,12 @@ const TripPlanner = () => {
             </div>
 
             <div className="flex w-fit max-w-full items-center gap-2">
-              <div className="flex items-center gap-2 rounded-full border border-border bg-white px-3">
+              <div
+                className="flex h-9 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium"
+                aria-label={`주변 검색 반경 ${formatNearbyRadiusLabel(nearbyRadiusMeters)}`}
+              >
                 <MapPin className="h-4 w-4 text-primary" />
-                <select
-                  value={nearbyRadiusMeters}
-                  onChange={(event) => handleNearbyRadiusChange(Number(event.target.value))}
-                  className="h-9 bg-transparent pr-1 text-sm font-medium outline-none"
-                  aria-label="주변 검색 반경"
-                >
-                  {NEARBY_RADIUS_OPTIONS.map((radiusMeters) => (
-                    <option key={radiusMeters} value={radiusMeters}>
-                      {formatNearbyRadiusLabel(radiusMeters)}
-                    </option>
-                  ))}
-                </select>
+                <span className="whitespace-nowrap">반경 {formatNearbyRadiusLabel(nearbyRadiusMeters)}</span>
               </div>
               <Button
                 size="sm"

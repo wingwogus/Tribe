@@ -20,7 +20,8 @@ class PlaceSearchService(
     private val placeResultAssembler: PlaceResultAssembler,
 ) {
     companion object {
-        private const val MAX_RADIUS_METERS = 50_000
+        private const val MAX_TEXT_SEARCH_RADIUS_METERS = 50_000
+        private const val MAX_NEARBY_RADIUS_METERS = 5_000
         private const val MIN_MAX_RESULT_COUNT = 1
         private const val MAX_MAX_RESULT_COUNT = 20
         private val SEARCH_CACHE_TTL: Duration = Duration.ofHours(6)
@@ -41,7 +42,7 @@ class PlaceSearchService(
             ?.uppercase(Locale.ROOT)
             ?.takeIf { it.length == 2 && it.all(Char::isLetter) }
         val normalizedRadius = if (latitude != null && longitude != null) {
-            (radiusMeters ?: MAX_RADIUS_METERS).coerceIn(1, MAX_RADIUS_METERS)
+            (radiusMeters ?: MAX_TEXT_SEARCH_RADIUS_METERS).coerceIn(1, MAX_TEXT_SEARCH_RADIUS_METERS)
         } else {
             null
         }
@@ -144,7 +145,7 @@ class PlaceSearchService(
     }
 
     private fun validateRadius(value: Int?): Int {
-        if (value == null || value <= 0 || value > MAX_RADIUS_METERS) {
+        if (value == null || value <= 0 || value > MAX_NEARBY_RADIUS_METERS) {
             throw invalidNearbyInput("radiusMeters", value)
         }
         return value

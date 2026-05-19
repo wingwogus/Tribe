@@ -263,6 +263,7 @@ class GooglePlaceSearchGateway(
             put("includedTypes", googleIncludedTypesFor(request.category))
             put("maxResultCount", request.maxResultCount)
             put("languageCode", request.language)
+            put("rankPreference", "DISTANCE")
             request.region?.let { put("regionCode", it) }
             put(
                 "locationRestriction",

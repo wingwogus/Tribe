@@ -338,7 +338,7 @@ class PlaceSearchServiceTest {
         assertEquals(
             ErrorCode.INVALID_INPUT,
             assertThrows(BusinessException::class.java) {
-                service.searchNearby(35.0, 139.0, 50_001, 10, "CAFE", "ko", "JP")
+                service.searchNearby(35.0, 139.0, 5_001, 10, "CAFE", "ko", "JP")
             }.errorCode,
         )
         assertEquals(

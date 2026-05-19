@@ -21,7 +21,6 @@ interface ItineraryMapProps {
     nearbyPlaces?: PlaceSearchResult[];
     tripCountry?: string;
     tripRegionCode?: string | null;
-    nearbyRadiusMeters?: number;
     selectedItineraryId?: number | null;
     selectedWishlistItemId?: number | null;
     selectedNearbyPlaceExternalId?: string | null;
@@ -31,6 +30,23 @@ interface ItineraryMapProps {
     onSelectNearbyPlace?: (place: PlaceSearchResult) => void;
     onSearchAreaChange?: () => void;
 }
+
+const MIN_NEARBY_SEARCH_RADIUS_METERS = 100;
+const MAX_NEARBY_SEARCH_RADIUS_METERS = 5_000;
+
+const calculateSearchRadiusMeters = (currentMap: L.Map): number => {
+    const center = currentMap.getCenter();
+    const bounds = currentMap.getBounds();
+    const visibleRadius = Math.max(
+        center.distanceTo(bounds.getNorthEast()),
+        center.distanceTo(bounds.getSouthWest()),
+    );
+
+    return Math.round(Math.min(
+        MAX_NEARBY_SEARCH_RADIUS_METERS,
+        Math.max(MIN_NEARBY_SEARCH_RADIUS_METERS, visibleRadius),
+    ));
+};
 
 const buildItineraryIcon = (index: number, color: string, isSelected: boolean) => {
     const size = isSelected ? 32 : 24;
@@ -147,7 +163,6 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
         nearbyPlaces = [],
         tripCountry,
         tripRegionCode,
-        nearbyRadiusMeters = 1000,
         selectedItineraryId = null,
         selectedWishlistItemId = null,
         selectedNearbyPlaceExternalId = null,
@@ -200,10 +215,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                 return {
                     latitude: center.lat,
                     longitude: center.lng,
-                    radiusMeters: nearbyRadiusMeters,
+                    radiusMeters: calculateSearchRadiusMeters(map.current),
                 };
             },
-        }), [nearbyRadiusMeters, panelOffsetPx]);
+        }), [panelOffsetPx]);
 
         useEffect(() => {
             if (mapContainer.current && !map.current) {
@@ -235,6 +250,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             const currentMap = map.current;
             const handleSearchAreaChange = () => onSearchAreaChange?.();
             currentMap.on('moveend zoomend', handleSearchAreaChange);
+            handleSearchAreaChange();
 
             return () => {
                 currentMap.off('moveend zoomend', handleSearchAreaChange);

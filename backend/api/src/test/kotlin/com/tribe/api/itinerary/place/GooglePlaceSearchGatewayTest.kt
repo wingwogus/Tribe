@@ -62,7 +62,7 @@ class GooglePlaceSearchGatewayTest {
     }
 
     @Test
-    fun `buildNearbySearchRequestBody uses included types and location restriction`() {
+    fun `buildNearbySearchRequestBody uses included types distance rank and location restriction`() {
         val body = gateway.buildNearbySearchRequestBody(
             PlaceSearchGateway.NearbySearchRequest(
                 latitude = 35.6812,
@@ -79,6 +79,7 @@ class GooglePlaceSearchGatewayTest {
         assertFalse(body.containsKey("includedPrimaryTypes"))
         assertEquals(10, body["maxResultCount"])
         assertEquals("ko", body["languageCode"])
+        assertEquals("DISTANCE", body["rankPreference"])
         assertEquals("JP", body["regionCode"])
         val locationRestriction = body["locationRestriction"] as Map<*, *>
         val circle = locationRestriction["circle"] as Map<*, *>
