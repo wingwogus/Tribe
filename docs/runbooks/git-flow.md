@@ -80,7 +80,6 @@ feat/coding-harness-docs
 
 PR descriptions or final agent reports should include:
 
-- branch name
 - summary of changed files
 - verification evidence
 - skipped checks and residual risk
