@@ -43,6 +43,7 @@ A feature is not done unless at least one requirement is locked by an automated 
 - Commit subjects must use Conventional Commits: `type(scope): 제목`.
 - Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 - Full branch and PR policy lives in `docs/runbooks/git-flow.md`.
+- GitHub PRs must use `.github/pull_request_template.md` and explicitly fill verification, skipped checks, residual risk, and contract/runbook changes.
 - For decision-heavy commits, keep the Conventional Commits subject and add an explanatory body or git-native trailers when they materially capture constraints, rejected alternatives, test evidence, or residual risk.
 
 ## Boundaries
