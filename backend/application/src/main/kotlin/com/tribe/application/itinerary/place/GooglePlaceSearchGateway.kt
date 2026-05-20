@@ -1,15 +1,10 @@
-package com.tribe.api.itinerary.place
+package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
-import com.tribe.application.itinerary.place.PlacePhotoMedia
-import com.tribe.application.itinerary.place.PlaceResultAssembler
-import com.tribe.application.itinerary.place.PlaceSearchContext
-import com.tribe.application.itinerary.place.PlaceSearchGateway
-import com.tribe.application.itinerary.place.RouteDetails
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -27,6 +22,8 @@ class GooglePlaceSearchGateway(
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        internal const val DETAILS_FIELD_MASK =
+            "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,photos,editorialSummary"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -81,7 +78,7 @@ class GooglePlaceSearchGateway(
             .header("X-Goog-Api-Key", apiKey)
             .header(
                 "X-Goog-FieldMask",
-                "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,editorialSummary",
+                DETAILS_FIELD_MASK,
             )
             .retrieve()
             .bodyToMono(PlaceDetailsResponse::class.java)
@@ -89,6 +86,10 @@ class GooglePlaceSearchGateway(
             .block()
             ?: return null
 
+        return toDetailsPayload(response)
+    }
+
+    internal fun toDetailsPayload(response: PlaceDetailsResponse): PlaceSearchGateway.DetailsPayload {
         val regularOpeningHoursJson = response.regularOpeningHours?.let { objectMapper.writeValueAsString(it) }
         val currentOpeningHoursJson = response.currentOpeningHours?.let { objectMapper.writeValueAsString(it) }
 
@@ -112,7 +113,7 @@ class GooglePlaceSearchGateway(
             priceLevel = parsePriceLevel(response.priceLevel),
             regularOpeningHoursJson = regularOpeningHoursJson,
             currentOpeningHoursJson = currentOpeningHoursJson,
-            primaryPhotoName = null,
+            primaryPhotoName = response.photos?.firstNotNullOfOrNull { it.name?.takeIf(String::isNotBlank) },
             editorialSummary = response.editorialSummary?.text,
             regularOpeningPeriods = parseRegularOpeningPeriods(response.regularOpeningHours),
         )
@@ -300,8 +301,14 @@ class GooglePlaceSearchGateway(
         val priceLevel: String?,
         val regularOpeningHours: JsonNode?,
         val currentOpeningHours: JsonNode?,
-        val editorialSummary: PlacesResponse.DisplayName?
-    )
+        val photos: List<Photo>?,
+        val editorialSummary: PlacesResponse.DisplayName?,
+    ) {
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        data class Photo(
+            val name: String?,
+        )
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class PhotoMediaRedirectResponse(
@@ -385,14 +392,14 @@ class GooglePlaceSearchGateway(
         if (!periods.isArray) return emptyList()
 
         return periods.mapIndexedNotNull { index, node ->
-            val open = node.get("open") ?: return@mapIndexedNotNull null
-            val close = node.get("close")
-            val openDay = open.get("day")?.asInt() ?: return@mapIndexedNotNull null
-            val openHour = open.get("hour")?.asInt() ?: 0
-            val openMinute = open.get("minute")?.asInt() ?: 0
-            val closeDay = close?.get("day")?.asInt() ?: openDay
-            val closeHour = close?.get("hour")?.asInt() ?: openHour
-            val closeMinute = close?.get("minute")?.asInt() ?: openMinute
+            val open = node.objectFieldOrNull("open") ?: return@mapIndexedNotNull null
+            val close = node.objectFieldOrNull("close") ?: return@mapIndexedNotNull null
+            val openDay = open.intFieldOrNull("day", 0..6) ?: return@mapIndexedNotNull null
+            val openHour = open.intFieldOrNull("hour", 0..23, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val openMinute = open.intFieldOrNull("minute", 0..59, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val closeDay = close.intFieldOrNull("day", 0..6, defaultValue = openDay) ?: return@mapIndexedNotNull null
+            val closeHour = close.intFieldOrNull("hour", 0..23, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val closeMinute = close.intFieldOrNull("minute", 0..59, defaultValue = 0) ?: return@mapIndexedNotNull null
             val openTotal = openHour * 60 + openMinute
             val closeTotal = closeHour * 60 + closeMinute
 
@@ -404,5 +411,18 @@ class GooglePlaceSearchGateway(
                 sequenceNo = index + 1,
             )
         }
+    }
+
+    private fun JsonNode.objectFieldOrNull(fieldName: String): JsonNode? =
+        get(fieldName)?.takeIf { it.isObject }
+
+    private fun JsonNode.intFieldOrNull(
+        fieldName: String,
+        range: IntRange,
+        defaultValue: Int? = null,
+    ): Int? {
+        val value = get(fieldName) ?: return defaultValue
+        if (!value.isIntegralNumber || !value.canConvertToInt()) return null
+        return value.intValue().takeIf { it in range }
     }
 }

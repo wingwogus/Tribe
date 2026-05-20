@@ -13,6 +13,7 @@ version = "0.0.1-SNAPSHOT"
 dependencies {
     implementation(project(":domain"))
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.4"))
