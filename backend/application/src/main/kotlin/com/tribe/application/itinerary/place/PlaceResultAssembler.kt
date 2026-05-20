@@ -17,7 +17,13 @@ class PlaceResultAssembler {
         )
     }
 
-    fun toPhotoHint(place: Place?): PlaceResult.PhotoHint? = null
+    fun toPhotoHint(place: Place?): PlaceResult.PhotoHint? {
+        val photoName = place?.detailSnapshot?.primaryPhotoName
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return PlaceResult.PhotoHint(name = photoName, photoUri = null)
+    }
 
     fun toDetailSummary(place: Place?): PlaceDetailSummary? {
         val snapshot = place?.detailSnapshot ?: return null
@@ -45,7 +51,7 @@ class PlaceResultAssembler {
             placeTypeSummary = placeTypeSummary,
             normalizedCategoryKey = Companion.toNormalizedCategoryKey(placeTypeSummary)
                 ?: toNormalizedCategoryKey(canonicalPlace),
-            photoHint = null,
+            photoHint = toPhotoHint(canonicalPlace),
             placeDetailSummary = toDetailSummary(canonicalPlace),
         )
     }

@@ -60,10 +60,28 @@ class PlaceCatalogService(
     }
 
     fun enrichDetailsIfNeeded(place: Place, language: String = "ko"): Place {
-        if (place.detailsSyncedAt != null) return place
-        val details = placeSearchGateway.getPlaceDetails(place.externalPlaceId, language) ?: return place
-        applyDetails(place, details)
+        if (!needsDetailEnrichment(place)) return place
+        refreshDetails(place, language)
         return place
+    }
+
+    fun refreshDetailsById(placeId: Long, language: String = "ko"): Boolean {
+        val place = placeRepository.findById(placeId).orElse(null) ?: return false
+        return refreshDetails(place, language)
+    }
+
+    fun refreshDetails(place: Place, language: String = "ko"): Boolean {
+        val details = placeSearchGateway.getPlaceDetails(place.externalPlaceId, language) ?: return false
+        applyDetails(place, details)
+        return true
+    }
+
+    private fun needsDetailEnrichment(place: Place): Boolean {
+        val snapshot = place.detailSnapshot
+        return place.detailsSyncedAt == null ||
+            snapshot == null ||
+            snapshot.openingHoursSyncedAt == null ||
+            snapshot.currentOpeningHoursSyncedAt == null
     }
 
     private fun createPlaceOrFindConcurrent(
@@ -92,12 +110,13 @@ class PlaceCatalogService(
         }
 
     private fun applyDetails(place: Place, details: PlaceSearchGateway.DetailsPayload) {
+        val syncedAt = LocalDateTime.now()
         place.googlePrimaryType = details.primaryType
         place.googleTypesJson = details.types.takeIf { it.isNotEmpty() }?.let(objectMapper::writeValueAsString)
         place.businessStatus = details.businessStatus
         place.utcOffsetMinutes = details.utcOffsetMinutes
-        place.typeSummarySyncedAt = LocalDateTime.now()
-        place.detailsSyncedAt = LocalDateTime.now()
+        place.typeSummarySyncedAt = syncedAt
+        place.detailsSyncedAt = syncedAt
 
         val snapshot = detailSnapshotRepository.findById(place.id).orElse(
             PlaceDetailSnapshot(place = place)
@@ -111,10 +130,12 @@ class PlaceCatalogService(
         snapshot.priceLevel = details.priceLevel
         snapshot.regularOpeningHoursJson = details.regularOpeningHoursJson
         snapshot.currentOpeningHoursJson = details.currentOpeningHoursJson
+        snapshot.openingHoursSyncedAt = syncedAt
+        snapshot.currentOpeningHoursSyncedAt = syncedAt
         snapshot.primaryPhotoName = details.primaryPhotoName
         snapshot.editorialSummary = details.editorialSummary
-        snapshot.detailsSyncedAt = place.detailsSyncedAt
-        snapshot.updatedAt = LocalDateTime.now()
+        snapshot.detailsSyncedAt = syncedAt
+        snapshot.updatedAt = syncedAt
         place.detailSnapshot = detailSnapshotRepository.save(snapshot)
 
         openingPeriodRepository.deleteAllByPlaceId(place.id)
