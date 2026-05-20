@@ -1,6 +1,8 @@
 package com.tribe.api.itinerary.wishlist
 
 import com.tribe.api.exception.GlobalExceptionHandler
+import com.tribe.application.itinerary.place.OpeningSummary
+import com.tribe.application.itinerary.place.OpeningSummarySource
 import com.tribe.application.itinerary.wishlist.MemberWishlistCommand
 import com.tribe.application.itinerary.wishlist.MemberWishlistResult
 import com.tribe.application.itinerary.wishlist.MemberWishlistService
@@ -25,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
+import java.time.LocalDateTime
 
 @WebMvcTest(MemberWishlistController::class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -69,6 +72,8 @@ class MemberWishlistControllerTest(
             .andExpect(jsonPath("$.data.memberWishlistItemId", equalTo(1)))
             .andExpect(jsonPath("$.data.placeId", equalTo(10)))
             .andExpect(jsonPath("$.data.externalPlaceId", equalTo("tokyo-tower")))
+            .andExpect(jsonPath("$.data.photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.openingSummary.source", equalTo("REGULAR")))
             .andExpect(jsonPath("$.data.adder").doesNotExist())
     }
 
@@ -83,6 +88,9 @@ class MemberWishlistControllerTest(
             .andExpect(jsonPath("$.data.content[0].memberWishlistItemId", equalTo(1)))
             .andExpect(jsonPath("$.data.content[0].placeId", equalTo(10)))
             .andExpect(jsonPath("$.data.content[0].externalPlaceId", equalTo("tokyo-tower")))
+            .andExpect(jsonPath("$.data.content[0].photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.openNow", equalTo(false)))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.source", equalTo("REGULAR")))
             .andExpect(jsonPath("$.data.content[0].adder").doesNotExist())
             .andExpect(jsonPath("$.data.totalElements", equalTo(1)))
     }
@@ -229,7 +237,16 @@ class MemberWishlistControllerTest(
         longitude = BigDecimal.TEN,
         placeTypeSummary = null,
         normalizedCategoryKey = null,
-        photoHint = null,
+        photoHint = MemberWishlistResult.PhotoHint("places/tokyo-tower/photos/photo-1", null),
         placeDetailSummary = null,
+        openingSummary = OpeningSummary(
+            openNow = false,
+            nextOpenTime = "2026-05-17T18:00:00+09:00",
+            nextCloseTime = null,
+            source = OpeningSummarySource.REGULAR,
+            timezoneOffsetMinutes = 540,
+            syncedAt = LocalDateTime.of(2026, 5, 17, 10, 0),
+            stale = false,
+        ),
     )
 }

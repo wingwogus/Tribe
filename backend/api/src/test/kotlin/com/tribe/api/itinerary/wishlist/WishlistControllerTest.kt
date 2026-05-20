@@ -1,6 +1,8 @@
 package com.tribe.api.itinerary.wishlist
 
 import com.tribe.api.exception.GlobalExceptionHandler
+import com.tribe.application.itinerary.place.OpeningSummary
+import com.tribe.application.itinerary.place.OpeningSummarySource
 import com.tribe.application.itinerary.wishlist.WishlistCommand
 import com.tribe.application.itinerary.wishlist.WishlistResult
 import com.tribe.application.itinerary.wishlist.WishlistService
@@ -25,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
+import java.time.LocalDateTime
 
 @WebMvcTest(WishlistController::class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -44,6 +47,12 @@ class WishlistControllerTest(
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.content[0].wishlistItemId", equalTo(1)))
+            .andExpect(jsonPath("$.data.content[0].externalPlaceId", equalTo("tokyo-tower")))
+            .andExpect(jsonPath("$.data.content[0].photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.content[0].photoHint.photoUri").doesNotExist())
+            .andExpect(jsonPath("$.data.content[0].openingSummary.openNow", equalTo(true)))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.source", equalTo("CURRENT")))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.stale", equalTo(false)))
             .andExpect(jsonPath("$.data.content[0].likeCount", equalTo(2)))
             .andExpect(jsonPath("$.data.content[0].likedByMe", equalTo(true)))
     }
@@ -80,7 +89,10 @@ class WishlistControllerTest(
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.wishlistItemId", equalTo(1)))
             .andExpect(jsonPath("$.data.placeId", equalTo(10)))
+            .andExpect(jsonPath("$.data.externalPlaceId", equalTo("tokyo-tower")))
             .andExpect(jsonPath("$.data.name", equalTo("도쿄타워")))
+            .andExpect(jsonPath("$.data.photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.openingSummary.source", equalTo("CURRENT")))
             .andExpect(jsonPath("$.data.adder.tripMemberId", equalTo(3)))
             .andExpect(jsonPath("$.data.adder.nickname", equalTo("member")))
     }
@@ -203,14 +215,24 @@ class WishlistControllerTest(
     private fun sampleItem() = WishlistResult.Item(
         wishlistItemId = 1L,
         placeId = 10L,
+        externalPlaceId = "tokyo-tower",
         name = "도쿄타워",
         address = "도쿄",
         latitude = BigDecimal.ONE,
         longitude = BigDecimal.TEN,
         placeTypeSummary = null,
         normalizedCategoryKey = null,
-        photoHint = null,
+        photoHint = WishlistResult.PhotoHint("places/tokyo-tower/photos/photo-1", null),
         placeDetailSummary = null,
+        openingSummary = OpeningSummary(
+            openNow = true,
+            nextOpenTime = null,
+            nextCloseTime = "2026-05-17T22:00:00+09:00",
+            source = OpeningSummarySource.CURRENT,
+            timezoneOffsetMinutes = 540,
+            syncedAt = LocalDateTime.of(2026, 5, 17, 10, 0),
+            stale = false,
+        ),
         adder = WishlistResult.Adder(
             tripMemberId = 3L,
             memberId = 2L,

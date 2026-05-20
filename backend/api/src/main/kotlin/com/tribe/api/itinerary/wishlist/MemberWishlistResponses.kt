@@ -17,6 +17,7 @@ object MemberWishlistResponses {
         val normalizedCategoryKey: String?,
         val photoHint: PlaceResponses.PhotoHintResponse?,
         val placeDetailSummary: PlaceResponses.PlaceDetailSummaryResponse?,
+        val openingSummary: PlaceResponses.OpeningSummaryResponse?,
     ) {
         companion object {
             fun from(item: MemberWishlistResult.Item) = MemberWishlistItemResponse(
@@ -31,6 +32,7 @@ object MemberWishlistResponses {
                 normalizedCategoryKey = item.normalizedCategoryKey?.name,
                 photoHint = item.photoHint?.let { PlaceResponses.PhotoHintResponse(it.name, it.photoUri) },
                 placeDetailSummary = item.placeDetailSummary?.let(PlaceResponses.PlaceDetailSummaryResponse::from),
+                openingSummary = item.openingSummary?.let(PlaceResponses.OpeningSummaryResponse::from),
             )
         }
     }

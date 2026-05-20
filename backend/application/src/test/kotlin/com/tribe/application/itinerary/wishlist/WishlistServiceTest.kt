@@ -36,6 +36,7 @@ import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.dao.DataIntegrityViolationException
@@ -266,6 +267,7 @@ class WishlistServiceTest {
 
         assertEquals(0, result.totalElements)
         assertEquals(true, result.content.isEmpty())
+        verifyNoInteractions(placeCatalogService)
     }
 
     @Test
@@ -288,6 +290,7 @@ class WishlistServiceTest {
 
         assertEquals(3L, result.content.first().likeCount)
         assertEquals(true, result.content.first().likedByMe)
+        verifyNoInteractions(placeCatalogService)
     }
 
     @Test

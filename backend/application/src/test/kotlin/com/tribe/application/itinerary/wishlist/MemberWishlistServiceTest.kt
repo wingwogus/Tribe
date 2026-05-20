@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mockito.any
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
@@ -238,6 +239,7 @@ class MemberWishlistServiceTest {
 
         assertEquals(1, result.totalElements)
         assertEquals("오사카성", result.content.first().name)
+        verifyNoInteractions(placeCatalogService)
     }
 
     @Test
@@ -252,6 +254,7 @@ class MemberWishlistServiceTest {
 
         assertEquals(0, result.totalElements)
         verify(memberWishlistItemRepository).findPageByMember(member.id, "도쿄", null, pageable)
+        verifyNoInteractions(placeCatalogService)
     }
 
     @Test

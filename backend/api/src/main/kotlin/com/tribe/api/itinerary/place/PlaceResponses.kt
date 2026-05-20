@@ -1,5 +1,6 @@
 package com.tribe.api.itinerary.place
 
+import com.tribe.application.itinerary.place.OpeningSummary
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceTypeSummary
@@ -43,6 +44,28 @@ object PlaceResponses {
                 rating = summary.rating,
                 userRatingCount = summary.userRatingCount,
                 editorialSummary = summary.editorialSummary,
+            )
+        }
+    }
+
+    data class OpeningSummaryResponse(
+        val openNow: Boolean?,
+        val nextOpenTime: String?,
+        val nextCloseTime: String?,
+        val source: String,
+        val timezoneOffsetMinutes: Int?,
+        val syncedAt: java.time.LocalDateTime?,
+        val stale: Boolean,
+    ) {
+        companion object {
+            fun from(summary: OpeningSummary) = OpeningSummaryResponse(
+                openNow = summary.openNow,
+                nextOpenTime = summary.nextOpenTime,
+                nextCloseTime = summary.nextCloseTime,
+                source = summary.source.name,
+                timezoneOffsetMinutes = summary.timezoneOffsetMinutes,
+                syncedAt = summary.syncedAt,
+                stale = summary.stale,
             )
         }
     }

@@ -12,6 +12,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.OneToMany
 import jakarta.persistence.OneToOne
+import org.hibernate.annotations.BatchSize
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -56,6 +57,7 @@ class Place(
     @OneToOne(mappedBy = "place", fetch = FetchType.LAZY, cascade = [CascadeType.ALL], orphanRemoval = true)
     var detailSnapshot: PlaceDetailSnapshot? = null
 
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "place", fetch = FetchType.LAZY, cascade = [CascadeType.ALL], orphanRemoval = true)
     val regularOpeningPeriods: MutableList<PlaceRegularOpeningPeriod> = mutableListOf()
 }

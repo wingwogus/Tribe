@@ -1,13 +1,17 @@
 package com.tribe.application.itinerary.wishlist
 
+import com.tribe.application.itinerary.place.NormalizedPlaceCategoryKey
+import com.tribe.application.itinerary.place.OpeningSummary
+import com.tribe.application.itinerary.place.OpeningSummaryAssembler
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResultAssembler
 import com.tribe.application.itinerary.place.PlaceTypeSummary
-import com.tribe.application.itinerary.place.NormalizedPlaceCategoryKey
 import com.tribe.domain.itinerary.wishlist.WishlistItem
 import java.math.BigDecimal
 
 object WishlistResult {
+    private val openingSummaryAssembler = OpeningSummaryAssembler()
+
     data class PhotoHint(
         val name: String?,
         val photoUri: String?,
@@ -22,6 +26,7 @@ object WishlistResult {
     data class Item(
         val wishlistItemId: Long,
         val placeId: Long,
+        val externalPlaceId: String,
         val name: String,
         val address: String?,
         val latitude: BigDecimal,
@@ -30,6 +35,7 @@ object WishlistResult {
         val normalizedCategoryKey: NormalizedPlaceCategoryKey?,
         val photoHint: PhotoHint?,
         val placeDetailSummary: PlaceDetailSummary?,
+        val openingSummary: OpeningSummary? = null,
         val adder: Adder,
         val likeCount: Long = 0L,
         val likedByMe: Boolean = false,
@@ -41,18 +47,21 @@ object WishlistResult {
                 likedByMe: Boolean = false,
             ): Item {
                 val assembler = PlaceResultAssembler()
+                val photoHint = assembler.toPhotoHint(entity.place)
                 val placeTypeSummary = assembler.toPlaceTypeSummary(entity.place)
                 return Item(
                     wishlistItemId = entity.id,
                     placeId = entity.place.id,
+                    externalPlaceId = entity.place.externalPlaceId,
                     name = entity.place.name,
                     address = entity.place.address,
                     latitude = entity.place.latitude,
                     longitude = entity.place.longitude,
                     placeTypeSummary = placeTypeSummary,
                     normalizedCategoryKey = PlaceResultAssembler.toNormalizedCategoryKey(placeTypeSummary),
-                    photoHint = null,
+                    photoHint = photoHint?.let { PhotoHint(it.name, it.photoUri) },
                     placeDetailSummary = assembler.toDetailSummary(entity.place),
+                    openingSummary = openingSummaryAssembler.toOpeningSummary(entity.place),
                     adder = Adder(
                         tripMemberId = entity.adder.id,
                         memberId = entity.adder.member?.id,

@@ -2,6 +2,7 @@ package com.tribe.application.itinerary.wishlist
 
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
+import com.tribe.application.itinerary.place.OpeningSummaryAssembler
 import com.tribe.application.itinerary.place.PlaceCatalogService
 import com.tribe.application.itinerary.place.PlaceResultAssembler
 import com.tribe.application.security.CurrentActor
@@ -26,6 +27,8 @@ class MemberWishlistService(
     private val currentActor: CurrentActor,
     private val placeResultAssembler: PlaceResultAssembler,
 ) {
+    private val openingSummaryAssembler = OpeningSummaryAssembler()
+
     fun addWishlistItem(command: MemberWishlistCommand.Add): MemberWishlistResult.Item {
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
@@ -117,6 +120,7 @@ class MemberWishlistService(
     private fun toItem(item: MemberWishlistItem): MemberWishlistResult.Item {
         val placeTypeSummary = placeResultAssembler.toPlaceTypeSummary(item.place)
         val photoHint = placeResultAssembler.toPhotoHint(item.place)
+        val openingSummary = openingSummaryAssembler.toOpeningSummary(item.place)
         return MemberWishlistResult.Item(
             memberWishlistItemId = item.id,
             placeId = item.place.id,
@@ -129,6 +133,7 @@ class MemberWishlistService(
             normalizedCategoryKey = PlaceResultAssembler.toNormalizedCategoryKey(placeTypeSummary),
             photoHint = photoHint?.let { MemberWishlistResult.PhotoHint(it.name, it.photoUri) },
             placeDetailSummary = placeResultAssembler.toDetailSummary(item.place),
+            openingSummary = openingSummary,
         )
     }
 }
