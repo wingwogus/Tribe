@@ -1,14 +1,13 @@
-import {useCallback, useEffect, useState} from "react";
+import {type KeyboardEvent, useCallback, useRef, useState} from "react";
 import {Loader2, Plus, Search} from "lucide-react";
 import {Dialog, DialogContent, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {placesApi, PlaceSearchResult} from "@/api/places";
-import {Badge} from "@/components/ui/badge";
 import {useToast} from "@/hooks/use-toast";
 import {buildPlaceSearchQuery, getCountryOptionByCode2, getTripRegionByCode, getTripRegionLabel} from "@/lib/tripRegions";
-import {getPlacePhotoUrl, getPlaceTypeLabel} from "@/lib/placePresentation";
 import {readApiErrorMessage} from "@/api/http";
+import {PlacePreviewCard} from "@/components/trip-planner/PlacePreviewCard";
 
 interface PlaceSearchModalProps {
   isOpen: boolean;
@@ -20,60 +19,110 @@ interface PlaceSearchModalProps {
 
 export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, regionCode }: PlaceSearchModalProps) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [places, setPlaces] = useState<PlaceSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
   const { toast } = useToast();
   const region = getTripRegionByCode(regionCode);
   const regionLabel = getTripRegionLabel(regionCode);
   const resolvedCountryCode = getCountryOptionByCode2(countryCode)?.code2;
+
+  const resetSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
+    setSearchQuery("");
+    setSubmittedQuery("");
+    setPlaces([]);
+    setIsLoading(false);
+    setErrorMessage(null);
+  }, []);
+
   const searchPlaces = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    const query = searchQuery.trim();
+    if (!query) {
+      setPlaces([]);
+      setIsLoading(false);
+      setSubmittedQuery("");
+      setErrorMessage(null);
+      searchRequestIdRef.current += 1;
+      return;
+    }
     
     setIsLoading(true);
+    setSubmittedQuery(query);
+    setErrorMessage(null);
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
     try {
       const [latitude, longitude] = region
         ? [region.centerLat, region.centerLng]
         : [undefined, undefined];
       const results = await placesApi.searchPlaces(
-        buildPlaceSearchQuery(searchQuery, regionCode),
+        buildPlaceSearchQuery(query, regionCode),
         resolvedCountryCode,
         latitude,
         longitude,
         50000,
         region ? `region:${region.code}` : resolvedCountryCode ? `country:${resolvedCountryCode}` : undefined,
       );
+      if (searchRequestIdRef.current !== requestId) {
+        return;
+      }
       setPlaces(results);
     } catch (error) {
+      if (searchRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message = readApiErrorMessage(error, "장소 검색 중 오류가 발생했습니다.");
+      setPlaces([]);
+      setErrorMessage(message);
       toast({
         title: "검색 실패",
-        description: readApiErrorMessage(error, "장소 검색 중 오류가 발생했습니다."),
+        description: message,
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      if (searchRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [region, regionCode, resolvedCountryCode, searchQuery, toast]);
 
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const timer = setTimeout(() => {
-        searchPlaces();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
+  const handleSearchQueryChange = (query: string) => {
+    setSearchQuery(query);
+    setErrorMessage(null);
+
+    if (query.trim() !== submittedQuery.trim()) {
       setPlaces([]);
+      setIsLoading(false);
+      setSubmittedQuery("");
+      searchRequestIdRef.current += 1;
     }
-  }, [searchPlaces, searchQuery]);
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void searchPlaces();
+    }
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetSearch();
+      onClose();
+    }
+  };
 
   const handleAddPlace = (place: PlaceSearchResult) => {
     onAddPlace(place);
-    setSearchQuery("");
-    setPlaces([]);
+    resetSearch();
     onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center">
@@ -89,7 +138,8 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, reg
             <Input
               placeholder={regionLabel ? `${regionLabel} 근처 장소를 검색하세요...` : "장소명이나 카테고리를 검색하세요..."}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchQueryChange(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               className="pl-10"
             />
           </div>
@@ -103,58 +153,51 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, reg
               </div>
             )}
 
+            {!isLoading && errorMessage && (
+              <div className="text-center text-muted-foreground py-8">
+                <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>검색에 실패했습니다</p>
+                <p className="text-sm">{errorMessage}</p>
+              </div>
+            )}
+
             {!isLoading && places.map((place) => (
-              <div
+              <PlacePreviewCard
                 key={place.externalPlaceId}
-                className="p-4 bg-gradient-subtle rounded-lg border hover:shadow-soft transition-all duration-200"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-1 gap-4 min-w-0">
-                    {getPlacePhotoUrl(place.photoHint) && (
-                      <img
-                        src={getPlacePhotoUrl(place.photoHint) || undefined}
-                        alt={place.placeName}
-                        className="h-16 w-16 rounded-lg object-cover border shrink-0"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <h5 className="font-medium text-foreground mb-2 truncate">{place.placeName}</h5>
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey) && (
-                          <Badge variant="secondary" className="font-medium">
-                            {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey)}
-                          </Badge>
-                        )}
-                        {typeof place.placeDetailSummary?.rating === "number" && (
-                          <Badge variant="outline" className="font-medium">
-                            평점 {place.placeDetailSummary.rating.toFixed(1)}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        <p className="line-clamp-2">{place.address}</p>
-                        {place.placeDetailSummary?.editorialSummary && (
-                          <p className="line-clamp-2 mt-1">{place.placeDetailSummary.editorialSummary}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                place={{
+                  title: place.placeName,
+                  address: place.address,
+                  placeTypeSummary: place.placeTypeSummary,
+                  normalizedCategoryKey: place.normalizedCategoryKey,
+                  placeDetailSummary: place.placeDetailSummary,
+                  openingSummary: place.openingSummary,
+                }}
+                action={
                   <Button
                     onClick={() => handleAddPlace(place)}
-                    className="bg-gradient-primary"
+                    size="icon"
+                    className="mt-1 h-9 w-9 rounded-full bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    추가
+                    <Plus className="w-5 h-5" />
+                    <span className="sr-only">{place.placeName} 위시리스트에 추가</span>
                   </Button>
-                </div>
-              </div>
+                }
+              />
             ))}
             
-            {!isLoading && searchQuery && places.length === 0 && (
+            {!isLoading && !errorMessage && submittedQuery && places.length === 0 && (
               <div className="text-center text-muted-foreground py-8">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>검색 결과가 없습니다</p>
-                <p className="text-sm">다른 키워드로 검색해보세요</p>
+                <p className="text-sm">다른 키워드를 입력한 뒤 Enter를 눌러보세요</p>
+              </div>
+            )}
+
+            {!isLoading && !submittedQuery && searchQuery && (
+              <div className="text-center text-muted-foreground py-8">
+                <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>Enter를 누르면 검색합니다</p>
+                <p className="text-sm">키워드를 다 입력한 뒤 Google Places에서 조회합니다</p>
               </div>
             )}
 
@@ -162,7 +205,7 @@ export const PlaceSearchModal = ({ isOpen, onClose, onAddPlace, countryCode, reg
               <div className="text-center text-muted-foreground py-8">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>장소를 검색해보세요</p>
-                <p className="text-sm">장소명이나 주소를 입력하세요</p>
+                <p className="text-sm">장소명이나 주소를 입력하고 Enter를 누르세요</p>
               </div>
             )}
           </div>
