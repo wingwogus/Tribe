@@ -75,6 +75,16 @@ class GooglePlaceSearchGatewayTest {
     }
 
     @Test
+    fun `search field mask requests card metadata`() {
+        val fields = GooglePlaceSearchGateway.SEARCH_FIELD_MASK.split(",")
+
+        assertTrue(fields.contains("places.rating"))
+        assertTrue(fields.contains("places.userRatingCount"))
+        assertTrue(fields.contains("places.businessStatus"))
+        assertTrue(fields.contains("places.currentOpeningHours"))
+    }
+
+    @Test
     fun `toDetailsPayload maps first google photo name`() {
         val payload = gateway.toDetailsPayload(
             detailsResponse(

@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import java.time.LocalDateTime
 import java.util.Locale
 
 @Component
@@ -22,6 +23,8 @@ class GooglePlaceSearchGateway(
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        internal const val SEARCH_FIELD_MASK =
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.businessStatus,places.utcOffsetMinutes,places.rating,places.userRatingCount,places.currentOpeningHours,places.editorialSummary"
         internal const val DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,photos,editorialSummary"
     }
@@ -39,7 +42,7 @@ class GooglePlaceSearchGateway(
             .header("X-Goog-Api-Key", apiKey)
             .header(
                 "X-Goog-FieldMask",
-                "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types",
+                SEARCH_FIELD_MASK,
             )
             .bodyValue(body)
             .retrieve()
@@ -68,6 +71,11 @@ class GooglePlaceSearchGateway(
                 longitude = it.location?.longitude ?: 0.0,
                 primaryType = placeTypeSummary?.primaryType,
                 types = placeTypeSummary?.types ?: emptyList(),
+                businessStatus = it.businessStatus,
+                rating = it.rating,
+                userRatingCount = it.userRatingCount,
+                editorialSummary = it.editorialSummary?.text,
+                openingSummary = toSearchOpeningSummary(it),
             )
         } ?: emptyList()
     }
@@ -116,6 +124,26 @@ class GooglePlaceSearchGateway(
             primaryPhotoName = response.photos?.firstNotNullOfOrNull { it.name?.takeIf(String::isNotBlank) },
             editorialSummary = response.editorialSummary?.text,
             regularOpeningPeriods = parseRegularOpeningPeriods(response.regularOpeningHours),
+        )
+    }
+
+    private fun toSearchOpeningSummary(result: PlacesResponse.PlaceResult): OpeningSummary? {
+        val currentOpeningHours = result.currentOpeningHours ?: return null
+        val openNow = currentOpeningHours.booleanFieldOrNull("openNow")
+        val nextOpenTime = currentOpeningHours.textFieldOrNull("nextOpenTime")
+        val nextCloseTime = currentOpeningHours.textFieldOrNull("nextCloseTime")
+        if (openNow == null && nextOpenTime == null && nextCloseTime == null) {
+            return null
+        }
+
+        return OpeningSummary(
+            openNow = openNow,
+            nextOpenTime = nextOpenTime,
+            nextCloseTime = nextCloseTime,
+            source = OpeningSummarySource.CURRENT,
+            timezoneOffsetMinutes = result.utcOffsetMinutes,
+            syncedAt = LocalDateTime.now(),
+            stale = false,
         )
     }
 
@@ -266,6 +294,12 @@ class GooglePlaceSearchGateway(
             val displayName: DisplayName?,
             val primaryType: String?,
             val types: List<String>?,
+            val businessStatus: String?,
+            val utcOffsetMinutes: Int?,
+            val rating: Double?,
+            val userRatingCount: Int?,
+            val currentOpeningHours: JsonNode?,
+            val editorialSummary: DisplayName?,
         )
 
         @JsonIgnoreProperties(ignoreUnknown = true)
@@ -415,6 +449,16 @@ class GooglePlaceSearchGateway(
 
     private fun JsonNode.objectFieldOrNull(fieldName: String): JsonNode? =
         get(fieldName)?.takeIf { it.isObject }
+
+    private fun JsonNode.booleanFieldOrNull(fieldName: String): Boolean? {
+        val value = get(fieldName) ?: return null
+        return value.takeIf { it.isBoolean }?.booleanValue()
+    }
+
+    private fun JsonNode.textFieldOrNull(fieldName: String): String? {
+        val value = get(fieldName) ?: return null
+        return value.takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
+    }
 
     private fun JsonNode.intFieldOrNull(
         fieldName: String,

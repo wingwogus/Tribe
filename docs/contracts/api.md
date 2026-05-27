@@ -53,6 +53,15 @@ Current route groups include:
 - `PATCH /api/v1/trips/{tripId}/items/order`
 - `GET /api/v1/trips/{tripId}/items/directions`
 - `GET /api/v1/places/search`
+- `POST /api/v1/trips/{tripId}/wishlists`
+- `POST /api/v1/trips/{tripId}/wishlists/from-member-wishlist`
+- `GET /api/v1/trips/{tripId}/wishlists`
+- `POST /api/v1/trips/{tripId}/wishlists/{wishlistItemId}/likes`
+- `DELETE /api/v1/trips/{tripId}/wishlists/{wishlistItemId}/likes`
+- `DELETE /api/v1/trips/{tripId}/wishlists`
+- `POST /api/v1/members/me/wishlists`
+- `GET /api/v1/members/me/wishlists`
+- `DELETE /api/v1/members/me/wishlists`
 
 ### Expense and Settlement
 
@@ -68,6 +77,16 @@ Current route groups include:
 - `POST /api/v1/community/posts`
 
 Keep this section aligned with controllers and frontend API wrappers when public route shapes change.
+
+Place and wishlist item responses may include these shared optional summary fields:
+
+- `placeTypeSummary`: Google primary/type labels normalized for UI display.
+- `normalizedCategoryKey`: backend-normalized category key for filtering and styling.
+- `photoHint`: Google photo name or resolved photo URI when available.
+- `placeDetailSummary`: business status, rating, user rating count, and editorial summary.
+- `openingSummary`: current/regular opening state with `openNow`, next open/close times, source, timezone offset, sync time, and staleness.
+
+Trip wishlist item responses include `likeCount`, `likedByMe`, and `adder`. Member wishlist item responses omit trip-specific adder and like state.
 
 ## Realtime Contract
 

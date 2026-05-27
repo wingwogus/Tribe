@@ -81,6 +81,7 @@ object PlaceResponses {
         val normalizedCategoryKey: String? = null,
         val photoHint: PhotoHintResponse? = null,
         val placeDetailSummary: PlaceDetailSummaryResponse? = null,
+        val openingSummary: OpeningSummaryResponse? = null,
     ) {
         companion object {
             fun from(result: PlaceResult.SearchItem) = SearchResponse(
@@ -94,6 +95,7 @@ object PlaceResponses {
                 normalizedCategoryKey = result.normalizedCategoryKey?.name,
                 photoHint = result.photoHint?.let(PhotoHintResponse::from),
                 placeDetailSummary = result.placeDetailSummary?.let(PlaceDetailSummaryResponse::from),
+                openingSummary = result.openingSummary?.let(OpeningSummaryResponse::from),
             )
         }
     }

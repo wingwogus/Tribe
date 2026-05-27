@@ -46,8 +46,14 @@ Backend runtime:
 
 ```bash
 cd backend
-./gradlew :api:bootRun
+TRIBE_SEED_ENABLED=true ./gradlew :api:bootRun
 ```
+
+When local seed is enabled, these local-only accounts are available:
+
+- `local.test@tribe.local` / `password`
+- `seed.owner@tribe.local` / `password`
+- `seed.member@tribe.local` / `password`
 
 The frontend Vite server proxies these paths to backend `http://localhost:8080`:
 

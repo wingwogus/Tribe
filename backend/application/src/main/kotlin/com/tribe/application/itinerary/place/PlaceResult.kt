@@ -17,6 +17,7 @@ object PlaceResult {
         val normalizedCategoryKey: NormalizedPlaceCategoryKey? = null,
         val photoHint: PhotoHint? = null,
         val placeDetailSummary: PlaceDetailSummary? = null,
+        val openingSummary: OpeningSummary? = null,
     )
 
     data class Detail(

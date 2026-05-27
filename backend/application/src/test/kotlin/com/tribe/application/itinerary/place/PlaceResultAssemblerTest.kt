@@ -42,6 +42,43 @@ class PlaceResultAssemblerTest {
         assertNull(assembler.toDetailSummary(place))
     }
 
+    @Test
+    fun `toSearchItem uses google search metadata when canonical place is missing`() {
+        val openingSummary = OpeningSummary(
+            openNow = true,
+            nextOpenTime = null,
+            nextCloseTime = "2026-05-17T14:00:00+09:00",
+            source = OpeningSummarySource.CURRENT,
+            timezoneOffsetMinutes = 540,
+            syncedAt = null,
+            stale = false,
+        )
+
+        val item = assembler.toSearchItem(
+            hit = PlaceSearchGateway.SearchHit(
+                externalPlaceId = "google-place-1",
+                placeName = "Kiji",
+                address = "Osaka, Kita Ward, Umeda",
+                latitude = 34.7,
+                longitude = 135.49,
+                primaryType = "japanese_restaurant",
+                types = listOf("japanese_restaurant", "restaurant"),
+                businessStatus = "OPERATIONAL",
+                rating = 4.5,
+                userRatingCount = 235,
+                openingSummary = openingSummary,
+            ),
+            canonicalPlace = null,
+        )
+
+        assertNull(item.placeId)
+        assertEquals(NormalizedPlaceCategoryKey.JAPANESE_FOOD, item.normalizedCategoryKey)
+        assertEquals("OPERATIONAL", item.placeDetailSummary?.businessStatus)
+        assertEquals(4.5, item.placeDetailSummary?.rating)
+        assertEquals(235, item.placeDetailSummary?.userRatingCount)
+        assertEquals(openingSummary, item.openingSummary)
+    }
+
     private fun placeFixture(): Place {
         val place = Place(
             externalPlaceId = "place-1",

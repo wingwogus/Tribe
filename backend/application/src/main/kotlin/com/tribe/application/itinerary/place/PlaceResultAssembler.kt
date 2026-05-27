@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component
 
 @Component
 class PlaceResultAssembler {
+    private val openingSummaryAssembler = OpeningSummaryAssembler()
+
     fun toNormalizedCategoryKey(place: Place?): NormalizedPlaceCategoryKey? =
         Companion.toNormalizedCategoryKey(toPlaceTypeSummary(place))
 
@@ -52,7 +54,8 @@ class PlaceResultAssembler {
             normalizedCategoryKey = Companion.toNormalizedCategoryKey(placeTypeSummary)
                 ?: toNormalizedCategoryKey(canonicalPlace),
             photoHint = toPhotoHint(canonicalPlace),
-            placeDetailSummary = toDetailSummary(canonicalPlace),
+            placeDetailSummary = toDetailSummary(canonicalPlace) ?: hit.toDetailSummary(),
+            openingSummary = canonicalPlace?.let(openingSummaryAssembler::toOpeningSummary) ?: hit.openingSummary,
         )
     }
 
@@ -77,6 +80,18 @@ class PlaceResultAssembler {
             currentOpeningHoursJson = place.detailSnapshot?.currentOpeningHoursJson,
         )
     }
+
+    private fun PlaceSearchGateway.SearchHit.toDetailSummary(): PlaceDetailSummary? =
+        if (businessStatus == null && rating == null && userRatingCount == null && editorialSummary == null) {
+            null
+        } else {
+            PlaceDetailSummary(
+                businessStatus = businessStatus,
+                rating = rating,
+                userRatingCount = userRatingCount,
+                editorialSummary = editorialSummary,
+            )
+        }
 
     companion object {
         private val objectMapper = jacksonObjectMapper()
