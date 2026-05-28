@@ -3,6 +3,7 @@ package com.tribe.api.itinerary.wishlist
 import com.tribe.api.common.ApiResponse
 import com.tribe.application.itinerary.wishlist.WishlistCommand
 import com.tribe.application.itinerary.wishlist.WishlistService
+import jakarta.validation.Valid
 import org.springframework.data.domain.Pageable
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -23,9 +24,19 @@ class WishlistController(
     @PostMapping
     fun addWishlistItem(
         @PathVariable tripId: Long,
-        @RequestBody request: WishlistRequests.WishlistAddRequest,
+        @Valid @RequestBody request: WishlistRequests.WishlistAddRequest,
     ): ResponseEntity<ApiResponse<WishlistResponses.WishlistItemResponse>> {
         val result = wishlistService.addWishList(request.toCommand(tripId))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
+    }
+
+    @PostMapping("/from-member-wishlist")
+    fun addWishlistItemFromMemberWishlist(
+        @PathVariable tripId: Long,
+        @Valid @RequestBody request: WishlistRequests.WishlistAddFromMemberWishlistRequest,
+    ): ResponseEntity<ApiResponse<WishlistResponses.WishlistItemResponse>> {
+        val result = wishlistService.addWishListFromMemberWishlist(request.toCommand(tripId))
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
     }
@@ -47,7 +58,7 @@ class WishlistController(
     @DeleteMapping
     fun deleteWishlistItems(
         @PathVariable tripId: Long,
-        @RequestBody request: WishlistRequests.WishlistDeleteRequest,
+        @Valid @RequestBody request: WishlistRequests.WishlistDeleteRequest,
     ): ResponseEntity<ApiResponse<Unit>> {
         wishlistService.deleteWishlistItems(request.toCommand(tripId))
         return ResponseEntity.ok(ApiResponse.empty(Unit))

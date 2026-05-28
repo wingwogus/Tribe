@@ -15,16 +15,21 @@ import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.itinerary.item.ItineraryItem
 import com.tribe.domain.itinerary.item.ItineraryItemRepository
+import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceRepository
+import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
+import com.tribe.domain.trip.core.Trip
 import com.tribe.domain.trip.core.TripRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 @Service
 @Transactional
 class ItemService(
     private val itineraryItemRepository: ItineraryItemRepository,
     private val placeRepository: PlaceRepository,
+    private val memberWishlistItemRepository: MemberWishlistItemRepository,
     private val placeSearchService: PlaceSearchService,
     private val placeResultAssembler: PlaceResultAssembler,
     private val openingHoursEvaluator: OpeningHoursEvaluator,
@@ -35,6 +40,7 @@ class ItemService(
 ) {
     fun createItem(command: ItemCommand.Create): ItemResult.Item {
         tripAuthorizationPolicy.isTripMember(command.tripId)
+        val actorId = currentActor.requireUserId()
         val trip = tripRepository.findById(command.tripId)
             .orElseThrow { BusinessException(ErrorCode.TRIP_NOT_FOUND) }
         val visitDay = command.visitDay
@@ -42,7 +48,52 @@ class ItemService(
             placeRepository.findById(placeId)
                 .orElseThrow { BusinessException(ErrorCode.PLACE_NOT_FOUND) }
         }
-        if (place == null && command.title.isNullOrBlank()) {
+
+        return createItemForPlace(
+            trip = trip,
+            tripId = command.tripId,
+            visitDay = visitDay,
+            place = place,
+            title = command.title,
+            time = command.time,
+            memo = command.memo,
+            actorId = actorId,
+        )
+    }
+
+    fun createItemFromMemberWishlist(command: ItemCommand.CreateFromMemberWishlist): ItemResult.Item {
+        tripAuthorizationPolicy.isTripMember(command.tripId)
+        val actorId = currentActor.requireUserId()
+        val memberWishlistItem = memberWishlistItemRepository.findByIdAndMemberIdWithPlace(
+            id = command.memberWishlistItemId,
+            memberId = actorId,
+        ) ?: throw BusinessException(ErrorCode.WISHLIST_ITEM_NOT_FOUND)
+        val trip = tripRepository.findById(command.tripId)
+            .orElseThrow { BusinessException(ErrorCode.TRIP_NOT_FOUND) }
+
+        return createItemForPlace(
+            trip = trip,
+            tripId = command.tripId,
+            visitDay = command.visitDay,
+            place = memberWishlistItem.place,
+            title = null,
+            time = command.time,
+            memo = command.memo,
+            actorId = actorId,
+        )
+    }
+
+    private fun createItemForPlace(
+        trip: Trip,
+        tripId: Long,
+        visitDay: Int,
+        place: Place?,
+        title: String?,
+        time: LocalDateTime?,
+        memo: String?,
+        actorId: Long,
+    ): ItemResult.Item {
+        if (place == null && title.isNullOrBlank()) {
             throw BusinessException(ErrorCode.INVALID_INPUT_VALUE)
         }
         val item = itineraryItemRepository.save(
@@ -50,18 +101,18 @@ class ItemService(
                 trip = trip,
                 visitDay = visitDay,
                 place = place,
-                title = if (place != null) null else normalizeNullableText(command.title),
-                time = command.time,
-                order = itineraryItemRepository.countByTripIdAndVisitDay(command.tripId, visitDay) + 1,
-                memo = normalizeNullableText(command.memo),
+                title = if (place != null) null else normalizeNullableText(title),
+                time = time,
+                order = itineraryItemRepository.countByTripIdAndVisitDay(tripId, visitDay) + 1,
+                memo = normalizeNullableText(memo),
             ),
         )
         val result = toItem(item)
         tripRealtimeEventPublisher.publish(
             TripRealtimeEvent(
                 type = TripRealtimeEventType.ITINERARY,
-                tripId = command.tripId,
-                actorId = currentActor.requireUserId(),
+                tripId = tripId,
+                actorId = actorId,
                 itinerary = ItineraryEvent(action = ItineraryAction.ITEM_CREATED, item = result),
             ),
         )

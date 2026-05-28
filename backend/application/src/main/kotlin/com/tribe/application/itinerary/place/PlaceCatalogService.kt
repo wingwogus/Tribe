@@ -7,8 +7,12 @@ import com.tribe.domain.itinerary.place.PlaceDetailSnapshotRepository
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriod
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriodRepository
 import com.tribe.domain.itinerary.place.PlaceRepository
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -21,6 +25,7 @@ class PlaceCatalogService(
     private val detailSnapshotRepository: PlaceDetailSnapshotRepository,
     private val openingPeriodRepository: PlaceRegularOpeningPeriodRepository,
     private val placeSearchGateway: PlaceSearchGateway,
+    private val transactionManager: PlatformTransactionManager,
 ) {
     fun findExistingPlaces(results: List<PlaceSearchGateway.SearchHit>): Map<String, Place> {
         if (results.isEmpty()) return emptyMap()
@@ -35,15 +40,14 @@ class PlaceCatalogService(
         longitude: BigDecimal,
         language: String = "ko",
     ): Place {
-        val place = placeRepository.findByExternalPlaceId(externalPlaceId) ?: placeRepository.save(
-            Place(
+        val place = placeRepository.findByExternalPlaceId(externalPlaceId)
+            ?: createPlaceOrFindConcurrent(
                 externalPlaceId = externalPlaceId,
-                name = placeName,
+                placeName = placeName,
                 address = address,
                 latitude = latitude,
                 longitude = longitude,
-            ),
-        )
+            )
 
         enrichDetailsIfNeeded(place, language)
 
@@ -61,6 +65,31 @@ class PlaceCatalogService(
         applyDetails(place, details)
         return place
     }
+
+    private fun createPlaceOrFindConcurrent(
+        externalPlaceId: String,
+        placeName: String,
+        address: String?,
+        latitude: BigDecimal,
+        longitude: BigDecimal,
+    ): Place =
+        try {
+            TransactionTemplate(transactionManager).apply {
+                propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+            }.execute {
+                placeRepository.saveAndFlush(
+                    Place(
+                        externalPlaceId = externalPlaceId,
+                        name = placeName,
+                        address = address,
+                        latitude = latitude,
+                        longitude = longitude,
+                    ),
+                )
+            } ?: throw DataIntegrityViolationException("Failed to save place")
+        } catch (ex: DataIntegrityViolationException) {
+            placeRepository.findByExternalPlaceId(externalPlaceId) ?: throw ex
+        }
 
     private fun applyDetails(place: Place, details: PlaceSearchGateway.DetailsPayload) {
         place.googlePrimaryType = details.primaryType

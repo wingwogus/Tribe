@@ -1,6 +1,6 @@
 package com.tribe.api.itinerary.wishlist
 
-import com.tribe.application.itinerary.wishlist.WishlistCommand
+import com.tribe.application.itinerary.wishlist.MemberWishlistCommand
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
@@ -10,8 +10,8 @@ import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
-object WishlistRequests {
-    data class WishlistAddRequest(
+object MemberWishlistRequests {
+    data class MemberWishlistAddRequest(
         @field:NotBlank(message = "외부 장소 ID는 필수입니다.")
         @field:Size(max = 255, message = "외부 장소 ID는 255자 이하여야 합니다.")
         val externalPlaceId: String,
@@ -27,8 +27,7 @@ object WishlistRequests {
         @field:DecimalMax(value = "180.0", message = "경도는 180 이하여야 합니다.")
         val longitude: BigDecimal,
     ) {
-        fun toCommand(tripId: Long): WishlistCommand.Add = WishlistCommand.Add(
-            tripId = tripId,
+        fun toCommand(): MemberWishlistCommand.Add = MemberWishlistCommand.Add(
             externalPlaceId = externalPlaceId,
             placeName = placeName,
             address = address,
@@ -37,27 +36,16 @@ object WishlistRequests {
         )
     }
 
-    data class WishlistAddFromMemberWishlistRequest(
-        @field:Positive(message = "개인 위시리스트 ID는 양수여야 합니다.")
-        val memberWishlistItemId: Long,
+    data class MemberWishlistDeleteRequest(
+        @field:NotEmpty(message = "삭제할 개인 위시리스트 항목은 비어있을 수 없습니다.")
+        @field:Size(max = 100, message = "한 번에 삭제할 수 있는 개인 위시리스트 항목은 100개 이하입니다.")
+        val memberWishlistItemIds: List<Long>,
     ) {
-        fun toCommand(tripId: Long): WishlistCommand.AddFromMemberWishlist = WishlistCommand.AddFromMemberWishlist(
-            tripId = tripId,
-            memberWishlistItemId = memberWishlistItemId,
-        )
-    }
+        @AssertTrue(message = "개인 위시리스트 항목 ID는 양수여야 합니다.")
+        fun hasOnlyPositiveMemberWishlistItemIds(): Boolean = memberWishlistItemIds.all { it > 0 }
 
-    data class WishlistDeleteRequest(
-        @field:NotEmpty(message = "삭제할 위시리스트 항목은 비어있을 수 없습니다.")
-        @field:Size(max = 100, message = "한 번에 삭제할 수 있는 위시리스트 항목은 100개 이하입니다.")
-        val wishlistItemIds: List<Long>,
-    ) {
-        @AssertTrue(message = "위시리스트 항목 ID는 양수여야 합니다.")
-        fun hasOnlyPositiveWishlistItemIds(): Boolean = wishlistItemIds.all { it > 0 }
-
-        fun toCommand(tripId: Long): WishlistCommand.Delete = WishlistCommand.Delete(
-            tripId = tripId,
-            wishlistItemIds = wishlistItemIds,
+        fun toCommand(): MemberWishlistCommand.Delete = MemberWishlistCommand.Delete(
+            memberWishlistItemIds = memberWishlistItemIds,
         )
     }
 }
