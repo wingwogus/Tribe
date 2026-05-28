@@ -8,6 +8,7 @@ import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriodRepository
 import com.tribe.domain.itinerary.place.PlaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -51,6 +52,38 @@ class PlaceCatalogServiceTest {
     }
 
     @Test
+    fun `getOrCreateAndEnrich reattaches newly created place before enrichment`() {
+        `when`(transactionManager.getTransaction(any(TransactionDefinition::class.java)))
+            .thenReturn(SimpleTransactionStatus())
+        val createdPlace = Place("place-1", "Tokyo Tower", "Tokyo", BigDecimal.ONE, BigDecimal.TEN)
+        ReflectionTestUtils.setField(createdPlace, "id", 10L)
+        val managedPlace = Place("place-1", "Tokyo Tower", "Tokyo", BigDecimal.ONE, BigDecimal.TEN)
+        ReflectionTestUtils.setField(managedPlace, "id", 10L)
+        val syncedAt = LocalDateTime.now()
+        managedPlace.detailsSyncedAt = syncedAt
+        managedPlace.detailSnapshot = PlaceDetailSnapshot(
+            place = managedPlace,
+            openingHoursSyncedAt = syncedAt,
+            currentOpeningHoursSyncedAt = syncedAt,
+        )
+
+        `when`(placeRepository.findByExternalPlaceId("place-1")).thenReturn(null)
+        `when`(placeRepository.saveAndFlush(any(Place::class.java))).thenReturn(createdPlace)
+        `when`(placeRepository.getReferenceById(10L)).thenReturn(managedPlace)
+
+        val result = service.getOrCreateAndEnrich(
+            externalPlaceId = "place-1",
+            placeName = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = BigDecimal.ONE,
+            longitude = BigDecimal.TEN,
+        )
+
+        assertSame(managedPlace, result)
+        verifyNoInteractions(placeSearchGateway)
+    }
+
+    @Test
     fun `getOrCreateAndEnrich reuses concurrently created place when save hits unique constraint`() {
         `when`(transactionManager.getTransaction(any(TransactionDefinition::class.java)))
             .thenReturn(SimpleTransactionStatus())
@@ -66,6 +99,7 @@ class PlaceCatalogServiceTest {
         `when`(placeRepository.findByExternalPlaceId("place-1")).thenReturn(null, concurrentPlace)
         `when`(placeRepository.saveAndFlush(any(Place::class.java)))
             .thenThrow(DataIntegrityViolationException("duplicate place"))
+        `when`(placeRepository.getReferenceById(10L)).thenReturn(concurrentPlace)
 
         val result = service.getOrCreateAndEnrich(
             externalPlaceId = "place-1",

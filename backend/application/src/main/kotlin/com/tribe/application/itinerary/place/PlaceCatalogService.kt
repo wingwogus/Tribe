@@ -47,11 +47,9 @@ class PlaceCatalogService(
                 address = address,
                 latitude = latitude,
                 longitude = longitude,
-            )
+            ).let(::findManagedPlace)
 
-        enrichDetailsIfNeeded(place, language)
-
-        return place
+        return enrichDetailsIfNeeded(place, language)
     }
 
     fun mergeWithCanonical(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
@@ -107,6 +105,13 @@ class PlaceCatalogService(
             } ?: throw DataIntegrityViolationException("Failed to save place")
         } catch (ex: DataIntegrityViolationException) {
             placeRepository.findByExternalPlaceId(externalPlaceId) ?: throw ex
+        }
+
+    private fun findManagedPlace(place: Place): Place =
+        if (place.id == 0L) {
+            place
+        } else {
+            placeRepository.getReferenceById(place.id)
         }
 
     private fun applyDetails(place: Place, details: PlaceSearchGateway.DetailsPayload) {
