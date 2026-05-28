@@ -9,9 +9,10 @@ import {getTripRegionCenter} from '@/lib/tripRegions';
 import {getPlaceCategoryColor} from '@/lib/placePresentation';
 
 export interface ItineraryMapHandle {
-    focusItineraryMarker: (itineraryId: number, options?: { offsetForPanel?: boolean }) => void;
-    focusWishlistMarker: (wishlistItemId: number, options?: { offsetForPanel?: boolean }) => void;
-    getSearchArea: () => { latitude: number; longitude: number; radiusMeters: number } | null;
+    focusItineraryMarker: (itineraryId: number, options?: { offsetForPanel?: boolean; visibleLeftInsetPx?: number }) => void;
+    focusWishlistMarker: (wishlistItemId: number, options?: { offsetForPanel?: boolean; visibleLeftInsetPx?: number }) => void;
+    focusNearbyMarker: (externalPlaceId: string, options?: { offsetForPanel?: boolean; visibleLeftInsetPx?: number }) => void;
+    getSearchArea: (options?: { visibleLeftInsetPx?: number }) => { latitude: number; longitude: number; radiusMeters: number } | null;
 }
 
 interface ItineraryMapProps {
@@ -25,6 +26,7 @@ interface ItineraryMapProps {
     selectedWishlistItemId?: number | null;
     selectedNearbyPlaceExternalId?: string | null;
     panelOffsetPx?: number;
+    visibleLeftInsetPx?: number;
     onSelectItineraryMarker?: (item: ItineraryResponse) => void;
     onSelectWishlistMarker?: (item: WishlistItem) => void;
     onSelectNearbyPlace?: (place: PlaceSearchResult) => void;
@@ -33,13 +35,36 @@ interface ItineraryMapProps {
 
 const MIN_NEARBY_SEARCH_RADIUS_METERS = 100;
 const MAX_NEARBY_SEARCH_RADIUS_METERS = 5_000;
+const MIN_VISIBLE_MAP_WIDTH_PX = 240;
 
-const calculateSearchRadiusMeters = (currentMap: L.Map): number => {
-    const center = currentMap.getCenter();
-    const bounds = currentMap.getBounds();
+const getSafeVisibleLeftInsetPx = (currentMap: L.Map, visibleLeftInsetPx: number): number => {
+    const mapWidth = currentMap.getSize().x;
+    return Math.min(
+        Math.max(0, visibleLeftInsetPx),
+        Math.max(0, mapWidth - MIN_VISIBLE_MAP_WIDTH_PX),
+    );
+};
+
+const getVisibleMapCenter = (currentMap: L.Map, visibleLeftInsetPx: number): L.LatLng => {
+    const size = currentMap.getSize();
+    const safeLeftInsetPx = getSafeVisibleLeftInsetPx(currentMap, visibleLeftInsetPx);
+    const visibleCenterPoint = L.point(
+        safeLeftInsetPx + ((size.x - safeLeftInsetPx) / 2),
+        size.y / 2,
+    );
+
+    return currentMap.containerPointToLatLng(visibleCenterPoint);
+};
+
+const calculateSearchRadiusMeters = (currentMap: L.Map, visibleLeftInsetPx: number): number => {
+    const size = currentMap.getSize();
+    const safeLeftInsetPx = getSafeVisibleLeftInsetPx(currentMap, visibleLeftInsetPx);
+    const center = getVisibleMapCenter(currentMap, safeLeftInsetPx);
+    const topRight = currentMap.containerPointToLatLng(L.point(size.x, 0));
+    const bottomLeft = currentMap.containerPointToLatLng(L.point(safeLeftInsetPx, size.y));
     const visibleRadius = Math.max(
-        center.distanceTo(bounds.getNorthEast()),
-        center.distanceTo(bounds.getSouthWest()),
+        center.distanceTo(topRight),
+        center.distanceTo(bottomLeft),
     );
 
     return Math.round(Math.min(
@@ -133,10 +158,23 @@ const buildNearbyIcon = (color: string, isSelected: boolean) => {
 const focusMarker = (
     map: L.Map,
     marker: L.Marker,
-    options: { offsetForPanel?: boolean; panelOffsetPx?: number } = {},
+    options: { offsetForPanel?: boolean; panelOffsetPx?: number; visibleLeftInsetPx?: number } = {},
 ) => {
     const latLng = marker.getLatLng();
     const zoom = Math.max(map.getZoom(), 16);
+    const visibleLeftInsetPx = options.visibleLeftInsetPx ?? 0;
+
+    if (visibleLeftInsetPx > 0) {
+        const safeLeftInsetPx = getSafeVisibleLeftInsetPx(map, visibleLeftInsetPx);
+        const projected = map.project(latLng, zoom).subtract([safeLeftInsetPx / 2, 0]);
+        const adjustedCenter = map.unproject(projected, zoom);
+
+        map.flyTo(adjustedCenter, zoom, {
+            duration: 1.2,
+            easeLinearity: 0.5,
+        });
+        return;
+    }
 
     if (!options.offsetForPanel) {
         map.flyTo(latLng, zoom, {
@@ -167,6 +205,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
         selectedWishlistItemId = null,
         selectedNearbyPlaceExternalId = null,
         panelOffsetPx = 400,
+        visibleLeftInsetPx = 0,
         onSelectItineraryMarker,
         onSelectWishlistMarker,
         onSelectNearbyPlace,
@@ -194,6 +233,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     focusMarker(map.current, marker, {
                         offsetForPanel: options?.offsetForPanel,
                         panelOffsetPx,
+                        visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
                     });
                 }
             },
@@ -203,22 +243,34 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     focusMarker(map.current, marker, {
                         offsetForPanel: options?.offsetForPanel,
                         panelOffsetPx,
+                        visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
                     });
                 }
             },
-            getSearchArea: () => {
+            focusNearbyMarker: (externalPlaceId, options) => {
+                const marker = nearbyMarkersMap.current.get(externalPlaceId);
+                if (marker && map.current) {
+                    focusMarker(map.current, marker, {
+                        offsetForPanel: options?.offsetForPanel,
+                        panelOffsetPx,
+                        visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
+                    });
+                }
+            },
+            getSearchArea: (options) => {
                 if (!map.current) {
                     return null;
                 }
 
-                const center = map.current.getCenter();
+                const effectiveVisibleLeftInsetPx = options?.visibleLeftInsetPx ?? visibleLeftInsetPx;
+                const center = getVisibleMapCenter(map.current, effectiveVisibleLeftInsetPx);
                 return {
                     latitude: center.lat,
                     longitude: center.lng,
-                    radiusMeters: calculateSearchRadiusMeters(map.current),
+                    radiusMeters: calculateSearchRadiusMeters(map.current, effectiveVisibleLeftInsetPx),
                 };
             },
-        }), [panelOffsetPx]);
+        }), [panelOffsetPx, visibleLeftInsetPx]);
 
         useEffect(() => {
             if (mapContainer.current && !map.current) {

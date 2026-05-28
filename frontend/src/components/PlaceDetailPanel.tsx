@@ -27,7 +27,7 @@ export interface PlaceDetailDayOption {
 }
 
 export interface PlaceDetailPanelPlace {
-  mode: "itinerary" | "wishlist";
+  mode: "itinerary" | "wishlist" | "nearby";
   name: string;
   address?: string | null;
   time?: string | null;
@@ -42,6 +42,7 @@ export interface PlaceDetailPanelPlace {
 interface PlaceDetailPanelProps {
   open: boolean;
   isMobile: boolean;
+  desktopMode?: "overlay" | "inline";
   place: PlaceDetailPanelPlace | null;
   detail?: PlaceDetailResponse | null;
   isLoading?: boolean;
@@ -133,6 +134,7 @@ const infoTileClass = "rounded-2xl border border-white/40 bg-white/75 p-3 backdr
 export const PlaceDetailPanel = ({
   open,
   isMobile,
+  desktopMode = "overlay",
   place,
   detail,
   isLoading = false,
@@ -152,7 +154,7 @@ export const PlaceDetailPanel = ({
     }
 
     setSelectedVisitDay(currentDay);
-  }, [currentDay, place?.mode, place?.name]);
+  }, [currentDay, place]);
 
   const categoryColor = getPlaceCategoryColor(place?.placeTypeSummary, place?.normalizedCategoryKey);
   const typeLabel = getPlaceTypeLabel(detail?.placeTypeSummary ?? place?.placeTypeSummary, detail?.normalizedCategoryKey ?? place?.normalizedCategoryKey);
@@ -164,6 +166,16 @@ export const PlaceDetailPanel = ({
   const openingRows = useMemo(() => parseOpeningHoursRows(detail), [detail]);
   const visitTime = formatVisitTime(place?.time);
   const address = detail?.address ?? place?.address;
+  const contextLabel = place?.mode === "wishlist"
+    ? "추가자"
+    : place?.mode === "nearby"
+      ? "주변 장소"
+      : "방문 예정";
+  const contextValue = place?.mode === "wishlist"
+    ? place.adderNickname || "멤버"
+    : place?.mode === "nearby"
+      ? typeLabel || "검색 결과"
+      : visitTime || "시간 미정";
 
   const content = place ? (
     <div className="flex h-full flex-col bg-white">
@@ -207,11 +219,9 @@ export const PlaceDetailPanel = ({
             <div className="mt-2 line-clamp-3 text-sm font-medium text-slate-700">{address || "주소 정보 없음"}</div>
           </div>
           <div className={infoTileClass}>
-            <div className="text-[10px] font-semibold text-slate-400">
-              {place.mode === "wishlist" ? "추가자" : "방문 예정"}
-            </div>
+            <div className="text-[10px] font-semibold text-slate-400">{contextLabel}</div>
             <div className="mt-2 line-clamp-2 text-sm font-semibold text-slate-800">
-              {place.mode === "wishlist" ? place.adderNickname || "멤버" : visitTime || "시간 미정"}
+              {contextValue}
             </div>
           </div>
         </div>
@@ -267,31 +277,40 @@ export const PlaceDetailPanel = ({
               </div>
             )}
 
-            <div className={`grid gap-3 ${place.mode === "wishlist" ? "grid-cols-[1.2fr_1fr]" : "grid-cols-2"}`}>
-              {place.mode === "wishlist" && onAddToItinerary ? (
-                <Button
-                  onClick={() => onAddToItinerary(selectedVisitDay)}
-                  className="h-12 rounded-2xl"
-                >
-                  Day {selectedVisitDay} 일정에 추가
-                </Button>
-              ) : (
-                <Button
-                  onClick={onOpenGoogleMaps}
-                  className="h-12 rounded-2xl"
-                >
-                  구글 지도
-                </Button>
-              )}
-
+            {place.mode === "nearby" ? (
               <Button
-                variant={place.mode === "wishlist" ? "outline" : "destructive"}
-                onClick={place.mode === "wishlist" ? onOpenGoogleMaps : onDelete}
-                className="h-12 rounded-2xl"
+                onClick={onOpenGoogleMaps}
+                className="h-12 w-full rounded-2xl"
               >
-                {place.mode === "wishlist" ? "구글 지도" : "일정 삭제"}
+                구글 지도
               </Button>
-            </div>
+            ) : (
+              <div className={`grid gap-3 ${place.mode === "wishlist" ? "grid-cols-[1.2fr_1fr]" : "grid-cols-2"}`}>
+                {place.mode === "wishlist" && onAddToItinerary ? (
+                  <Button
+                    onClick={() => onAddToItinerary(selectedVisitDay)}
+                    className="h-12 rounded-2xl"
+                  >
+                    Day {selectedVisitDay} 일정에 추가
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={onOpenGoogleMaps}
+                    className="h-12 rounded-2xl"
+                  >
+                    구글 지도
+                  </Button>
+                )}
+
+                <Button
+                  variant={place.mode === "wishlist" ? "outline" : "destructive"}
+                  onClick={place.mode === "wishlist" ? onOpenGoogleMaps : onDelete}
+                  className="h-12 rounded-2xl"
+                >
+                  {place.mode === "wishlist" ? "구글 지도" : "일정 삭제"}
+                </Button>
+              </div>
+            )}
 
             {place.mode === "wishlist" && onDelete && (
               <Button
@@ -423,6 +442,14 @@ export const PlaceDetailPanel = ({
           {content}
         </DrawerContent>
       </Drawer>
+    );
+  }
+
+  if (desktopMode === "inline") {
+    return (
+      <div className="hidden h-full w-full bg-white md:block">
+        {content}
+      </div>
     );
   }
 
