@@ -48,4 +48,8 @@ interface WishlistItemRepository : JpaRepository<WishlistItem, Long> {
     @Modifying
     @Query("delete from WishlistItem w where w.adder.id = :adderId")
     fun deleteByAdderId(adderId: Long)
+
+    @Modifying
+    @Query("delete from WishlistItem w where w.trip.id = :tripId")
+    fun deleteByTripId(@Param("tripId") tripId: Long)
 }

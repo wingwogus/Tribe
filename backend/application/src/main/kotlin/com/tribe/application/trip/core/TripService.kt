@@ -15,6 +15,7 @@ import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.event.TripSummary
 import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.trip.core.TripRegion
 import com.tribe.domain.member.MemberRepository
@@ -44,6 +45,7 @@ class TripService(
     private val tripMemberRepository: TripMemberRepository,
     private val tripInvitationRepository: TripInvitationRepository,
     private val communityPostRepository: CommunityPostRepository,
+    private val wishlistItemRepository: WishlistItemRepository,
     @Value("\${app.url}") private val appUrl: String,
 ) {
     companion object {
@@ -117,6 +119,7 @@ class TripService(
         val trip = tripRepository.findById(tripId).orElseThrow {
             BusinessException(ErrorCode.TRIP_NOT_FOUND)
         }
+        wishlistItemRepository.deleteByTripId(tripId)
         tripRepository.delete(trip)
         tripRealtimeEventPublisher.publish(
             TripRealtimeEvent(

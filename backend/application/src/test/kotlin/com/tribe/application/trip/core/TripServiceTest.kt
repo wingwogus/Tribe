@@ -9,6 +9,7 @@ import com.tribe.application.trip.member.TripMemberIntegrityService
 import com.tribe.domain.community.CommunityPost
 import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
 import com.tribe.domain.trip.core.Country
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.any
+import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
@@ -43,6 +45,7 @@ class TripServiceTest {
     @Mock private lateinit var tripMemberRepository: TripMemberRepository
     @Mock private lateinit var tripInvitationRepository: TripInvitationRepository
     @Mock private lateinit var communityPostRepository: CommunityPostRepository
+    @Mock private lateinit var wishlistItemRepository: WishlistItemRepository
 
     private lateinit var tripService: TripService
 
@@ -58,6 +61,7 @@ class TripServiceTest {
             tripMemberRepository = tripMemberRepository,
             tripInvitationRepository = tripInvitationRepository,
             communityPostRepository = communityPostRepository,
+            wishlistItemRepository = wishlistItemRepository,
             appUrl = "http://localhost:3000",
         )
     }
@@ -209,6 +213,19 @@ class TripServiceTest {
         assertEquals(5L, tripService.leaveTrip(TripCommand.Leave(5L)).tripId)
         assertEquals(5L, tripService.kickMember(TripCommand.KickMember(5L, 2L)).tripId)
         assertEquals(5L, tripService.assignRole(TripCommand.AssignRole(5L, 2L, "admin")).tripId)
+    }
+
+    @Test
+    fun `deleteTrip removes wishlist items before deleting trip`() {
+        val trip = Trip("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN)
+        `when`(tripRepository.findById(5L)).thenReturn(java.util.Optional.of(trip))
+        `when`(currentActor.requireUserId()).thenReturn(1L)
+
+        tripService.deleteTrip(5L)
+
+        val ordered = inOrder(wishlistItemRepository, tripRepository)
+        ordered.verify(wishlistItemRepository).deleteByTripId(5L)
+        ordered.verify(tripRepository).delete(trip)
     }
 
     @Test
