@@ -72,6 +72,8 @@ const MAX_NEARBY_SEARCH_RADIUS_METERS = 5_000;
 const MIN_VISIBLE_MAP_WIDTH_PX = 240;
 const DEFAULT_CENTER: [number, number] = [37.5665, 126.9780];
 const DEFAULT_PLACE_ZOOM = 12;
+const WEB_MERCATOR_TILE_SIZE = 256;
+const MAX_MERCATOR_LATITUDE = 85.05112878;
 const GOOGLE_POI_ACTION_DOCK_WIDTH_PX = 292;
 const GOOGLE_POI_ACTION_DOCK_HEIGHT_PX = 48;
 const GOOGLE_POI_ACTION_DOCK_MARGIN_PX = 16;
@@ -174,19 +176,52 @@ const getMarkerLatLng = (marker: AdvancedMarker): google.maps.LatLng | null => {
     return new google.maps.LatLng(position.lat, position.lng);
 };
 
+type PixelPoint = {
+    x: number;
+    y: number;
+};
+
+const clampLatitudeForMercator = (latitude: number): number => Math.min(
+    Math.max(latitude, -MAX_MERCATOR_LATITUDE),
+    MAX_MERCATOR_LATITUDE,
+);
+
+const latLngToPixelPoint = (latLng: google.maps.LatLng, zoom: number): PixelPoint => {
+    const scale = WEB_MERCATOR_TILE_SIZE * (2 ** zoom);
+    const latitude = clampLatitudeForMercator(latLng.lat());
+    const sinLatitude = Math.sin(latitude * Math.PI / 180);
+
+    return {
+        x: ((latLng.lng() + 180) / 360) * scale,
+        y: (0.5 - Math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * Math.PI)) * scale,
+    };
+};
+
+const pixelPointToLatLng = (point: PixelPoint, zoom: number): google.maps.LatLngLiteral => {
+    const scale = WEB_MERCATOR_TILE_SIZE * (2 ** zoom);
+    const longitude = (point.x / scale) * 360 - 180;
+    const mercatorY = 0.5 - (point.y / scale);
+    const latitude = 90 - (360 * Math.atan(Math.exp(-mercatorY * 2 * Math.PI)) / Math.PI);
+
+    return {
+        lat: clampLatitudeForMercator(latitude),
+        lng: longitude,
+    };
+};
+
 const getOffsetCenter = (
-    projection: google.maps.MapCanvasProjection,
     position: google.maps.LatLng,
     offsetX: number,
-): google.maps.LatLng | null => {
-    const point = projection.fromLatLngToDivPixel(position);
-    if (!point) {
-        return null;
-    }
+    zoom: number,
+): google.maps.LatLngLiteral => {
+    const point = latLngToPixelPoint(position, zoom);
 
-    return projection.fromDivPixelToLatLng(
-        new google.maps.Point(point.x + offsetX, point.y),
-        true,
+    return pixelPointToLatLng(
+        {
+            x: point.x + offsetX,
+            y: point.y,
+        },
+        zoom,
     );
 };
 
@@ -215,7 +250,6 @@ const getGooglePoiActionAnchor = (
 
 const focusMarker = (
     map: google.maps.Map,
-    projection: google.maps.MapCanvasProjection | null,
     marker: AdvancedMarker,
     options: { offsetForPanel?: boolean; panelOffsetPx?: number; visibleLeftInsetPx?: number } = {},
 ) => {
@@ -228,12 +262,12 @@ const focusMarker = (
     const visibleLeftInsetPx = options.visibleLeftInsetPx ?? 0;
     let center: google.maps.LatLng | google.maps.LatLngLiteral = latLng;
 
-    if (projection && visibleLeftInsetPx > 0) {
+    if (visibleLeftInsetPx > 0) {
         const safeLeftInsetPx = getSafeVisibleLeftInsetPx(map, visibleLeftInsetPx);
-        center = getOffsetCenter(projection, latLng, -safeLeftInsetPx / 2) ?? latLng;
-    } else if (projection && options.offsetForPanel) {
+        center = getOffsetCenter(latLng, -safeLeftInsetPx / 2, zoom);
+    } else if (options.offsetForPanel) {
         const offsetPx = Math.max(0, Math.round((options.panelOffsetPx ?? 380) / 2));
-        center = getOffsetCenter(projection, latLng, offsetPx) ?? latLng;
+        center = getOffsetCenter(latLng, offsetPx, zoom);
     }
 
     map.moveCamera({center, zoom});
@@ -426,7 +460,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             focusItineraryMarker: (itineraryId, options) => {
                 const record = markersMap.current.get(itineraryId);
                 if (record && map.current) {
-                    focusMarker(map.current, projection.current, record.marker, {
+                    focusMarker(map.current, record.marker, {
                         offsetForPanel: options?.offsetForPanel,
                         panelOffsetPx,
                         visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
@@ -436,7 +470,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             focusWishlistMarker: (wishlistItemId, options) => {
                 const record = wishlistMarkersMap.current.get(wishlistItemId);
                 if (record && map.current) {
-                    focusMarker(map.current, projection.current, record.marker, {
+                    focusMarker(map.current, record.marker, {
                         offsetForPanel: options?.offsetForPanel,
                         panelOffsetPx,
                         visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
@@ -446,7 +480,7 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
             focusNearbyMarker: (externalPlaceId, options) => {
                 const record = nearbyMarkersMap.current.get(externalPlaceId);
                 if (record && map.current) {
-                    focusMarker(map.current, projection.current, record.marker, {
+                    focusMarker(map.current, record.marker, {
                         offsetForPanel: options?.offsetForPanel,
                         panelOffsetPx,
                         visibleLeftInsetPx: options?.visibleLeftInsetPx ?? visibleLeftInsetPx,
