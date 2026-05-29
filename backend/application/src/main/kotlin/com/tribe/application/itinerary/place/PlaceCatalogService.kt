@@ -1,6 +1,8 @@
 package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshot
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshotRepository
@@ -54,6 +56,29 @@ class PlaceCatalogService(
         return place
     }
 
+    fun getOrCreateFromExternalPlaceId(
+        externalPlaceId: String,
+        language: String = "ko",
+    ): Place {
+        placeRepository.findByExternalPlaceId(externalPlaceId)?.let { return it }
+
+        val summary = placeSearchGateway.getPlaceSummary(externalPlaceId, language)
+            ?: throw BusinessException(
+                ErrorCode.PLACE_NOT_FOUND,
+                detail = mapOf("externalPlaceId" to externalPlaceId),
+            )
+
+        return createPlaceOrFindConcurrent(
+            externalPlaceId = summary.externalPlaceId,
+            placeName = summary.placeName,
+            address = summary.address,
+            latitude = BigDecimal.valueOf(summary.latitude),
+            longitude = BigDecimal.valueOf(summary.longitude),
+            primaryType = summary.primaryType,
+            types = summary.types,
+        )
+    }
+
     fun mergeWithCanonical(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
         val existingMap = findExistingPlaces(results)
         return results.map { result -> placeResultAssembler.toSearchItem(result, existingMap[result.externalPlaceId]) }
@@ -72,19 +97,27 @@ class PlaceCatalogService(
         address: String?,
         latitude: BigDecimal,
         longitude: BigDecimal,
+        primaryType: String? = null,
+        types: List<String> = emptyList(),
     ): Place =
         try {
             TransactionTemplate(transactionManager).apply {
                 propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
             }.execute {
+                val place = Place(
+                    externalPlaceId = externalPlaceId,
+                    name = placeName,
+                    address = address,
+                    latitude = latitude,
+                    longitude = longitude,
+                )
+                if (primaryType != null || types.isNotEmpty()) {
+                    place.googlePrimaryType = primaryType
+                    place.googleTypesJson = types.takeIf { it.isNotEmpty() }?.let(objectMapper::writeValueAsString)
+                    place.typeSummarySyncedAt = LocalDateTime.now()
+                }
                 placeRepository.saveAndFlush(
-                    Place(
-                        externalPlaceId = externalPlaceId,
-                        name = placeName,
-                        address = address,
-                        latitude = latitude,
-                        longitude = longitude,
-                    ),
+                    place,
                 )
             } ?: throw DataIntegrityViolationException("Failed to save place")
         } catch (ex: DataIntegrityViolationException) {

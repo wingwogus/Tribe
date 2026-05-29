@@ -30,6 +30,10 @@ class GooglePlaceSearchGateway(
         private const val MAX_RADIUS_METERS = 50_000
         internal const val NEARBY_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types"
+        internal const val PLACE_SUMMARY_FIELD_MASK =
+            "id,displayName,formattedAddress,location,primaryType,types"
+        private const val PLACE_DETAILS_FIELD_MASK =
+            "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,editorialSummary"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -93,14 +97,50 @@ class GooglePlaceSearchGateway(
         return response.places?.map { toSearchHit(it) } ?: emptyList()
     }
 
+    override fun getPlaceSummary(externalPlaceId: String, language: String): PlaceSearchGateway.SearchHit? {
+        val response = try {
+            webClient.get()
+                .uri { builder ->
+                    builder
+                        .scheme("https")
+                        .host("places.googleapis.com")
+                        .path("/v1/places/{placeId}")
+                        .queryParam("languageCode", language)
+                        .build(externalPlaceId)
+                }
+                .header("X-Goog-Api-Key", apiKey)
+                .header("X-Goog-FieldMask", PLACE_SUMMARY_FIELD_MASK)
+                .retrieve()
+                .bodyToMono(PlaceDetailsResponse::class.java)
+                .block()
+        } catch (ex: WebClientResponseException) {
+            if (ex.statusCode.value() == 404) {
+                return null
+            }
+            logger.error(
+                "Google Place Summary failed: status={}, body={}",
+                ex.statusCode.value(),
+                ex.responseBodyAsString,
+                ex,
+            )
+            throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
+        } ?: return null
+
+        return toSearchHit(response)
+    }
+
     override fun getPlaceDetails(externalPlaceId: String, language: String): PlaceSearchGateway.DetailsPayload? {
         val response = webClient.get()
-            .uri("https://places.googleapis.com/v1/places/{placeId}", externalPlaceId)
+            .uri { builder ->
+                builder
+                    .scheme("https")
+                    .host("places.googleapis.com")
+                    .path("/v1/places/{placeId}")
+                    .queryParam("languageCode", language)
+                    .build(externalPlaceId)
+            }
             .header("X-Goog-Api-Key", apiKey)
-            .header(
-                "X-Goog-FieldMask",
-                "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,editorialSummary",
-            )
+            .header("X-Goog-FieldMask", PLACE_DETAILS_FIELD_MASK)
             .retrieve()
             .bodyToMono(PlaceDetailsResponse::class.java)
             .doOnError { logger.error("Error calling Google Place Details API", it) }
@@ -308,6 +348,19 @@ class GooglePlaceSearchGateway(
     }
 
     private fun toSearchHit(place: PlacesResponse.PlaceResult): PlaceSearchGateway.SearchHit {
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = place.location?.latitude ?: 0.0,
+            longitude = place.location?.longitude ?: 0.0,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+        )
+    }
+
+    private fun toSearchHit(place: PlaceDetailsResponse): PlaceSearchGateway.SearchHit {
         val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
         return PlaceSearchGateway.SearchHit(
             externalPlaceId = place.id,

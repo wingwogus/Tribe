@@ -10,6 +10,7 @@ import com.tribe.application.trip.event.WishlistAction
 import com.tribe.application.trip.event.WishlistEvent
 import com.tribe.application.trip.core.TripAuthorizationPolicy
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.place.PlaceRepository
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItem
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
@@ -28,6 +29,7 @@ class WishlistService(
     private val wishlistItemRepository: WishlistItemRepository,
     private val memberWishlistItemRepository: MemberWishlistItemRepository,
     private val placeCatalogService: com.tribe.application.itinerary.place.PlaceCatalogService,
+    private val placeRepository: PlaceRepository,
     private val tripMemberRepository: TripMemberRepository,
     private val tripRepository: TripRepository,
     private val memberRepository: MemberRepository,
@@ -70,6 +72,20 @@ class WishlistService(
 
         ensurePlaceNotInWishList(command.tripId, memberWishlistItem.place.externalPlaceId)
         return addWishListPlace(command.tripId, trip, tripMember, memberWishlistItem.place, memberId)
+    }
+
+    fun addWishListFromPlace(command: WishlistCommand.AddFromPlace): WishlistResult.Item {
+        tripAuthorizationPolicy.isTripMember(command.tripId)
+        val memberId = currentActor.requireUserId()
+        val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
+        val trip = tripRepository.findById(command.tripId).orElseThrow { BusinessException(ErrorCode.TRIP_NOT_FOUND) }
+        val tripMember = tripMemberRepository.findByTripAndMember(trip, member)
+            ?: throw BusinessException(ErrorCode.NOT_A_TRIP_MEMBER)
+        val place = placeRepository.findById(command.placeId)
+            .orElseThrow { BusinessException(ErrorCode.PLACE_NOT_FOUND) }
+
+        ensurePlaceNotInWishList(command.tripId, place.externalPlaceId)
+        return addWishListPlace(command.tripId, trip, tripMember, place, memberId)
     }
 
     private fun ensurePlaceNotInWishList(tripId: Long, externalPlaceId: String) {

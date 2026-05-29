@@ -363,6 +363,41 @@ class PlaceSearchServiceTest {
     }
 
     @Test
+    fun `resolveExternalPlace creates canonical place through catalog and returns place id`() {
+        val place = Place(
+            externalPlaceId = "google-place-1",
+            name = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = BigDecimal.valueOf(35.6586),
+            longitude = BigDecimal.valueOf(139.7454),
+        )
+        ReflectionTestUtils.setField(place, "id", 10L)
+        val expectedHit = PlaceSearchGateway.SearchHit(
+            externalPlaceId = "google-place-1",
+            placeName = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = 35.6586,
+            longitude = 139.7454,
+        )
+        val expectedResult = PlaceResult.SearchItem(
+            placeId = 10L,
+            externalPlaceId = "google-place-1",
+            placeName = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = 35.6586,
+            longitude = 139.7454,
+        )
+        `when`(placeCatalogService.getOrCreateFromExternalPlaceId("google-place-1", "ko")).thenReturn(place)
+        `when`(placeResultAssembler.toSearchItem(expectedHit, place)).thenReturn(expectedResult)
+
+        val result = service.resolveExternalPlace(" google-place-1 ", "KO ")
+
+        assertEquals(10L, result.placeId)
+        assertEquals("google-place-1", result.externalPlaceId)
+        verifyNoInteractions(placeSearchGateway)
+    }
+
+    @Test
     fun `getPlaceDetail enriches and assembles view`() {
         val place = Place(
             externalPlaceId = "place-1",

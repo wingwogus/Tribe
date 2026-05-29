@@ -55,6 +55,13 @@ Current route groups include:
 - `PATCH /api/v1/trips/{tripId}/items/order`
 - `GET /api/v1/trips/{tripId}/items/directions`
 - `GET /api/v1/places/search`
+- `POST /api/v1/places/nearby`
+- `POST /api/v1/places/resolve`
+- `POST /api/v1/trips/{tripId}/wishlists`
+- `POST /api/v1/trips/{tripId}/wishlists/from-place`
+- `POST /api/v1/trips/{tripId}/wishlists/from-member-wishlist`
+- `GET /api/v1/trips/{tripId}/wishlists`
+- `DELETE /api/v1/trips/{tripId}/wishlists`
 - Wishlist item `adder` payloads include `avatar: string | null`.
 
 ### Expense and Settlement

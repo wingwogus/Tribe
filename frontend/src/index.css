@@ -124,22 +124,4 @@ body {
   @apply bg-background text-foreground;
 }
 
-/* Leaflet z-index overrides to prevent map from appearing above modals */
-.leaflet-container {
-  z-index: 1 !important;
-}
-
-.leaflet-pane {
-  z-index: 1 !important;
-}
-
-.leaflet-marker-pane,
-.leaflet-shadow-pane,
-.leaflet-overlay-pane {
-  z-index: 2 !important;
-}
-
-.leaflet-popup {
-  z-index: 3 !important;
-}
 }

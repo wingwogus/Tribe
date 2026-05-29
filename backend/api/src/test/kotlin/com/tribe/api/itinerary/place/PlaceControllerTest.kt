@@ -31,6 +31,36 @@ class PlaceControllerTest(
     @MockBean private lateinit var tokenProvider: TokenProvider
 
     @Test
+    fun `resolveExternalPlace returns resolved canonical place response`() {
+        `when`(
+            placeSearchService.resolveExternalPlace(
+                externalPlaceId = "google-place-1",
+                language = "ko",
+            ),
+        ).thenReturn(
+            PlaceResult.SearchItem(
+                placeId = 10L,
+                externalPlaceId = "google-place-1",
+                placeName = "Tokyo Tower",
+                address = "Tokyo",
+                latitude = 35.6586,
+                longitude = 139.7454,
+            ),
+        )
+
+        mockMvc.perform(
+            post("/api/v1/places/resolve")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"externalPlaceId":"google-place-1","language":"ko"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.placeId", equalTo(10)))
+            .andExpect(jsonPath("$.data.externalPlaceId", equalTo("google-place-1")))
+            .andExpect(jsonPath("$.data.placeName", equalTo("Tokyo Tower")))
+    }
+
+    @Test
     fun `searchNearbyPlaces returns nearby search response`() {
         `when`(
             placeSearchService.searchNearby(

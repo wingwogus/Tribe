@@ -234,14 +234,16 @@ spacing:
   - Prefer extracting repeated planner/settlement patterns only when duplication is meaningful and behavior is shared.
   - New components should consume Tailwind semantic tokens (`primary`, `muted`, `border`, `background`, `card`) rather than inline hex.
   - Header primary actions such as `로그인` use a flat primary fill with pill radius; do not use gradients in the header CTA area.
-  - Header route-switch ghost actions use rounded neutral pills with subtle hover tint, not bordered or gradient buttons.
+  - Header route-switch ghost actions use rounded neutral pills with neutral hover feedback, not bordered, gradient, accent, or primary-tint hover fills.
   - Dashboard trip cards should stay compact and rounded: about 320px per card on desktop, 144px image height, 24px card radius, 16px card title, 14px metadata, and restrained elevation.
   - Dashboard action buttons sit in the body header, not the global header: `여행 참여하기` is a compact outline pill with a users icon, and `새 여행 만들기` is a compact flat primary pill with a plus icon.
+  - Planner/map transient popovers or action docks follow dashboard action buttons: compact rounded-full actions, flat primary fill for the main action, black-outline white secondary action, and no accent or primary-tint hover background on secondary/ghost actions.
   - Dashboard trip-list section labels are `다가오는 여행` for active/future trips and `완료된 여행` for trips whose end date has passed.
   - Dashboard trip-list sections with no cards are hidden. When there are no trips at all, show one full-width rounded empty state with a circular muted inline SVG takeoff-airplane silhouette using smoothed paths, concise title/subtitle, and a compact primary `새 여행 추가` action.
 - Variants and states:
   - Primary button: `bg-primary text-primary-foreground`; use for one dominant action in a local region.
   - Secondary/outline button: border or muted surface; use for reversible or alternate actions.
+  - Hover behavior follows the dashboard pattern: primary actions may lift slightly and darken to `primary/90`; outline actions stay neutral with `slate-50`; ghost actions do not introduce colored hover backgrounds unless the owning screen already established that pattern.
   - Ghost/icon button: quiet toolbar and row actions; icon-only buttons need accessible labels/tooltips where appropriate.
   - Selected state: primary border plus primary tint, not a new color.
   - Destructive state: destructive token only for irreversible actions.

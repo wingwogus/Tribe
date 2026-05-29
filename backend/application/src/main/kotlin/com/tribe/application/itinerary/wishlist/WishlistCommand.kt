@@ -17,6 +17,11 @@ object WishlistCommand {
         val memberWishlistItemId: Long,
     )
 
+    data class AddFromPlace(
+        val tripId: Long,
+        val placeId: Long,
+    )
+
     data class Delete(
         val tripId: Long,
         val wishlistItemIds: List<Long>,

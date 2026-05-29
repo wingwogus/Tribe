@@ -50,6 +50,17 @@ class PlaceController(
         return ResponseEntity.ok(ApiResponse.ok(result))
     }
 
+    @PostMapping("/resolve")
+    fun resolveExternalPlace(
+        @RequestBody request: PlaceRequests.ResolveExternalPlaceRequest,
+    ): ResponseEntity<ApiResponse<PlaceResponses.SearchResponse>> {
+        val result = placeSearchService.resolveExternalPlace(
+            externalPlaceId = request.externalPlaceId,
+            language = request.language,
+        )
+        return ResponseEntity.ok(ApiResponse.ok(PlaceResponses.SearchResponse.from(result)))
+    }
+
     @GetMapping("/{placeId}")
     fun getPlaceDetail(
         @PathVariable placeId: Long,

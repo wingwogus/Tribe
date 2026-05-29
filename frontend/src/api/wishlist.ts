@@ -85,6 +85,14 @@ export const wishlistApi = {
     return toWishlistItem(response.data.data as BackendWishlistItem);
   },
 
+  addWishlistFromPlace: async (tripId: number, placeId: number): Promise<WishlistItem> => {
+    const response = await authenticatedAxios.post<ApiResponse<BackendWishlistItem>>(
+      `/trips/${tripId}/wishlists/from-place`,
+      { placeId },
+    );
+    return toWishlistItem(response.data.data as BackendWishlistItem);
+  },
+
   getWishlist: async (tripId: number, query?: string, page = 0, size = 300): Promise<WishlistSearchResponse> => {
     const response = await authenticatedAxios.get<ApiResponse<WishlistSearchResponse>>(`/trips/${tripId}/wishlists`, {
       params: { query, page, size },

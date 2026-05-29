@@ -118,6 +118,18 @@ class GooglePlaceSearchGatewayTest {
     }
 
     @Test
+    fun `place summary field mask is the approved lightweight field mask`() {
+        assertEquals(
+            "id,displayName,formattedAddress,location,primaryType,types",
+            GooglePlaceSearchGateway.PLACE_SUMMARY_FIELD_MASK,
+        )
+        assertFalse(GooglePlaceSearchGateway.PLACE_SUMMARY_FIELD_MASK.contains("rating"))
+        assertFalse(GooglePlaceSearchGateway.PLACE_SUMMARY_FIELD_MASK.contains("photos"))
+        assertFalse(GooglePlaceSearchGateway.PLACE_SUMMARY_FIELD_MASK.contains("openingHours"))
+        assertFalse(GooglePlaceSearchGateway.PLACE_SUMMARY_FIELD_MASK.contains("editorialSummary"))
+    }
+
+    @Test
     fun `parsePriceLevel maps google enum strings to numeric levels`() {
         assertEquals(2, gateway.parsePriceLevel("PRICE_LEVEL_MODERATE"))
         assertEquals(4, gateway.parsePriceLevel("PRICE_LEVEL_VERY_EXPENSIVE"))

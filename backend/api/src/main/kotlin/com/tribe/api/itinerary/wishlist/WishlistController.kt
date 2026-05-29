@@ -41,6 +41,16 @@ class WishlistController(
             .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
     }
 
+    @PostMapping("/from-place")
+    fun addWishlistItemFromPlace(
+        @PathVariable tripId: Long,
+        @Valid @RequestBody request: WishlistRequests.WishlistAddFromPlaceRequest,
+    ): ResponseEntity<ApiResponse<WishlistResponses.WishlistItemResponse>> {
+        val result = wishlistService.addWishListFromPlace(request.toCommand(tripId))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
+    }
+
     @GetMapping
     fun getWishlistItems(
         @PathVariable tripId: Long,

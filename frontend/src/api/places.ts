@@ -15,6 +15,10 @@ export interface PlaceSearchResult {
   placeDetailSummary?: PlaceDetailSummary | null;
 }
 
+export interface ResolvedPlaceResult extends PlaceSearchResult {
+  placeId: number;
+}
+
 export interface PlaceDetailResponse {
   placeId: number;
   externalPlaceId: string;
@@ -80,6 +84,17 @@ export const placesApi = {
     const response = await authenticatedAxios.post<{ data: PlaceSearchResult[] }>(
       '/places/nearby',
       request,
+    );
+    return response.data.data;
+  },
+
+  resolveExternalPlace: async (
+    externalPlaceId: string,
+    language: string = "ko",
+  ): Promise<ResolvedPlaceResult> => {
+    const response = await authenticatedAxios.post<{ data: ResolvedPlaceResult }>(
+      '/places/resolve',
+      { externalPlaceId, language },
     );
     return response.data.data;
   },

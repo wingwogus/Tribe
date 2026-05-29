@@ -47,6 +47,16 @@ object WishlistRequests {
         )
     }
 
+    data class WishlistAddFromPlaceRequest(
+        @field:Positive(message = "장소 ID는 양수여야 합니다.")
+        val placeId: Long,
+    ) {
+        fun toCommand(tripId: Long): WishlistCommand.AddFromPlace = WishlistCommand.AddFromPlace(
+            tripId = tripId,
+            placeId = placeId,
+        )
+    }
+
     data class WishlistDeleteRequest(
         @field:NotEmpty(message = "삭제할 위시리스트 항목은 비어있을 수 없습니다.")
         @field:Size(max = 100, message = "한 번에 삭제할 수 있는 위시리스트 항목은 100개 이하입니다.")

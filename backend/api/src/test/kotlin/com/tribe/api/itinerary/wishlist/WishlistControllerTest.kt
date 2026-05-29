@@ -32,6 +32,30 @@ class WishlistControllerTest(
     @MockBean private lateinit var tokenProvider: TokenProvider
 
     @Test
+    fun `addWishlistItemFromPlace returns created trip wishlist payload`() {
+        `when`(
+            wishlistService.addWishListFromPlace(
+                WishlistCommand.AddFromPlace(
+                    tripId = 5L,
+                    placeId = 10L,
+                ),
+            ),
+        ).thenReturn(sampleItem())
+
+        mockMvc.perform(
+            post("/api/v1/trips/5/wishlists/from-place")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"placeId":10}"""),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.wishlistItemId", equalTo(1)))
+            .andExpect(jsonPath("$.data.placeId", equalTo(10)))
+            .andExpect(jsonPath("$.data.name", equalTo("도쿄타워")))
+            .andExpect(jsonPath("$.data.adder.tripMemberId", equalTo(3)))
+    }
+
+    @Test
     fun `addWishlistItemFromMemberWishlist returns created trip wishlist payload`() {
         `when`(
             wishlistService.addWishListFromMemberWishlist(

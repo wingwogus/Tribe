@@ -38,7 +38,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import {getGoogleMapsSearchUrl, openGoogleMaps} from "@/lib/googleMaps";
+import {getGoogleMapsPlaceUrl, getGoogleMapsSearchUrl, openGoogleMaps} from "@/lib/googleMaps";
 import {
   closestCenter,
   DndContext,
@@ -83,7 +83,7 @@ import {ExpenseListModal} from "@/components/ExpenseListModal";
 import {DailySettlementModal} from "@/components/DailySettlementModal";
 import {TotalSettlementModal} from "@/components/TotalSettlementModal";
 import {TripMembersModal} from "@/components/TripMembersModal";
-import {ItineraryMap, ItineraryMapHandle} from "@/components/ItineraryMap";
+import {ItineraryMap, ItineraryMapHandle, type GooglePoiSelection} from "@/components/ItineraryMap";
 import {PlaceDetailPanel, type PlaceDetailPanelPlace} from "@/components/PlaceDetailPanel";
 import {TripChatModal} from "@/components/TripChatModal";
 import {tripApi} from "@/api/trips";
@@ -626,6 +626,7 @@ const TripPlanner = () => {
   const isMobile = useIsMobile();
   
   const [selectedDay, setSelectedDay] = useState(1);
+  const [googlePoiAction, setGooglePoiAction] = useState<"itinerary" | "wishlist" | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
   const mapRef = useRef<ItineraryMapHandle>(null);
   const [showPlaceSearchModal, setShowPlaceSearchModal] = useState(false);
@@ -1186,6 +1187,10 @@ const TripPlanner = () => {
     }
   }, [isMobile, openDesktopNearbyPanel]);
 
+  const handleOpenGooglePoiInGoogleMaps = useCallback((place: GooglePoiSelection) => {
+    openGoogleMaps(getGoogleMapsPlaceUrl(place.externalPlaceId, place.latitude, place.longitude));
+  }, []);
+
   // Directions query
   const { data: directionsData = [] } = useQuery({
     queryKey: [...tripQueryKeys.directions(tripId ?? ""), 'WALKING', 'DRIVING', 'TRANSIT'],
@@ -1407,6 +1412,55 @@ const TripPlanner = () => {
 
     return createdItem;
   }, [queryClient, toast, tripId]);
+
+  const handleAddGooglePoiToItinerary = useCallback(async (place: GooglePoiSelection) => {
+    if (!tripId || googlePoiAction) {
+      return;
+    }
+
+    setGooglePoiAction("itinerary");
+    try {
+      const resolvedPlace = await placesApi.resolveExternalPlace(place.externalPlaceId);
+      await createItineraryAndSync({
+        visitDay: selectedDay,
+        placeId: resolvedPlace.placeId,
+        successDescription: `${resolvedPlace.placeName}이(가) Day ${selectedDay} 일정에 추가되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "추가 실패",
+        description: readApiErrorMessage(error, "Google 장소를 일정에 추가하는 중 오류가 발생했습니다."),
+        variant: "destructive",
+      });
+    } finally {
+      setGooglePoiAction(null);
+    }
+  }, [createItineraryAndSync, googlePoiAction, selectedDay, toast, tripId]);
+
+  const handleAddGooglePoiToWishlist = useCallback(async (place: GooglePoiSelection) => {
+    if (!tripId || googlePoiAction) {
+      return;
+    }
+
+    setGooglePoiAction("wishlist");
+    try {
+      const resolvedPlace = await placesApi.resolveExternalPlace(place.externalPlaceId);
+      const item = await wishlistApi.addWishlistFromPlace(Number(tripId), resolvedPlace.placeId);
+      await queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
+      toast({
+        title: "위시리스트에 추가됨",
+        description: `${item.name}이(가) 추가되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "추가 실패",
+        description: readApiErrorMessage(error, "Google 장소를 위시리스트에 추가하는 중 오류가 발생했습니다."),
+        variant: "destructive",
+      });
+    } finally {
+      setGooglePoiAction(null);
+    }
+  }, [googlePoiAction, queryClient, toast, tripId]);
 
   const handleAddWishlistToItinerary = useCallback(async (wishlistItem: WishlistItem, visitDay: number) => {
     const createdItem = await createItineraryAndSync({
@@ -3225,7 +3279,6 @@ const TripPlanner = () => {
         {/* Map - Right Side */}
         <div className="relative h-full min-h-[300px] flex-1 md:absolute md:inset-0 md:min-h-0">
           <ItineraryMap
-            key={selectedDay}
             ref={mapRef}
             items={itineraryItems.filter(item => item.visitDay === selectedDay)}
             days={Array.from({ length: totalDays }, (_, index) => index + 1)}
@@ -3241,6 +3294,11 @@ const TripPlanner = () => {
             onSelectItineraryMarker={(item) => openItineraryPlacePanel(item, { toggleIfSame: true })}
             onSelectWishlistMarker={(item) => openWishlistPlacePanel(item, { toggleIfSame: true })}
             onSelectNearbyPlace={handleSelectNearbyPlace}
+            onAddGooglePoiToItinerary={handleAddGooglePoiToItinerary}
+            onAddGooglePoiToWishlist={handleAddGooglePoiToWishlist}
+            isAddingGooglePoiToItinerary={googlePoiAction === "itinerary"}
+            isAddingGooglePoiToWishlist={googlePoiAction === "wishlist"}
+            onOpenGooglePoiInGoogleMaps={handleOpenGooglePoiInGoogleMaps}
             onSearchAreaChange={handleNearbySearchAreaChange}
           />
 

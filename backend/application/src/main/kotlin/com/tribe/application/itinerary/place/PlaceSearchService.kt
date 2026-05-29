@@ -118,6 +118,30 @@ class PlaceSearchService(
         return placeSearchGateway.directions(originPlaceId, destinationPlaceId, normalized)
     }
 
+    @Transactional
+    fun resolveExternalPlace(externalPlaceId: String?, language: String? = "ko"): PlaceResult.SearchItem {
+        val normalizedExternalPlaceId = externalPlaceId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw invalidNearbyInput("externalPlaceId", externalPlaceId)
+        val normalizedLanguage = language?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: "ko"
+
+        val place = placeCatalogService.getOrCreateFromExternalPlaceId(
+            externalPlaceId = normalizedExternalPlaceId,
+            language = normalizedLanguage,
+        )
+        return placeResultAssembler.toSearchItem(
+            PlaceSearchGateway.SearchHit(
+                externalPlaceId = place.externalPlaceId,
+                placeName = place.name,
+                address = place.address ?: "주소 정보 없음",
+                latitude = place.latitude.toDouble(),
+                longitude = place.longitude.toDouble(),
+            ),
+            place,
+        )
+    }
+
     fun getPhoto(name: String, maxWidthPx: Int): PlacePhotoMedia =
         placeSearchGateway.getPhoto(name, maxWidthPx)
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
