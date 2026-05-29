@@ -14,6 +14,7 @@ object TripResult {
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
         val role: String,
     ) {
         companion object {
@@ -22,6 +23,7 @@ object TripResult {
                     tripMemberId = tripMember.id,
                     memberId = tripMember.member?.id,
                     nickname = tripMember.name,
+                    avatar = tripMember.member?.avatar,
                     role = tripMember.role.name,
                 )
             }
@@ -36,9 +38,12 @@ object TripResult {
         val country: String,
         val regionCode: String? = null,
         val memberCount: Int,
+        val members: List<MemberSummary> = emptyList(),
     ) {
         companion object {
             fun from(trip: Trip): SimpleTrip {
+                val activeMembers = trip.members.filter { it.role != TripRole.KICKED && it.role != TripRole.EXITED && !it.isGuest }
+
                 return SimpleTrip(
                     tripId = trip.id,
                     title = trip.title,
@@ -46,7 +51,8 @@ object TripResult {
                     endDate = trip.endDate,
                     country = trip.country.koreanName,
                     regionCode = trip.regionCode,
-                    memberCount = trip.members.count { it.role != TripRole.KICKED && it.role != TripRole.EXITED && !it.isGuest },
+                    memberCount = activeMembers.size,
+                    members = activeMembers.map(MemberSummary::from),
                 )
             }
         }

@@ -9,9 +9,15 @@ object WishlistResponses {
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
     ) {
         companion object {
-            fun from(adder: WishlistResult.Adder) = AdderResponse(adder.tripMemberId, adder.memberId, adder.nickname)
+            fun from(adder: WishlistResult.Adder) = AdderResponse(
+                tripMemberId = adder.tripMemberId,
+                memberId = adder.memberId,
+                nickname = adder.nickname,
+                avatar = adder.avatar,
+            )
         }
     }
 

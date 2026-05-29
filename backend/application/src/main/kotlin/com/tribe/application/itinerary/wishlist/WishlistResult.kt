@@ -17,6 +17,7 @@ object WishlistResult {
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
     )
 
     data class Item(
@@ -51,6 +52,7 @@ object WishlistResult {
                         tripMemberId = entity.adder.id,
                         memberId = entity.adder.member?.id,
                         nickname = entity.adder.name,
+                        avatar = entity.adder.member?.avatar,
                     ),
                 )
             }

@@ -15,6 +15,7 @@ object TripResponses {
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
         val role: String,
     ) {
         companion object {
@@ -22,6 +23,7 @@ object TripResponses {
                 tripMemberId = result.tripMemberId,
                 memberId = result.memberId,
                 nickname = result.nickname,
+                avatar = result.avatar,
                 role = result.role,
             )
         }
@@ -35,6 +37,7 @@ object TripResponses {
         val country: String,
         val regionCode: String?,
         val memberCount: Int,
+        val members: List<MemberResponse>,
     ) {
         companion object {
             fun from(result: TripResult.SimpleTrip) = SimpleTripResponse(
@@ -45,6 +48,7 @@ object TripResponses {
                 country = result.country,
                 regionCode = result.regionCode,
                 memberCount = result.memberCount,
+                members = result.members.map(MemberResponse::from),
             )
         }
     }

@@ -90,6 +90,15 @@ class TripControllerTest(
                             country = "일본",
                             regionCode = "JP_TOKYO",
                             memberCount = 2,
+                            members = listOf(
+                                TripResult.MemberSummary(
+                                    tripMemberId = 1L,
+                                    memberId = 2L,
+                                    nickname = "member",
+                                    avatar = "https://cdn.example.com/member.png",
+                                    role = "OWNER",
+                                ),
+                            ),
                         ),
                     ),
                     PageRequest.of(0, 10),
@@ -101,6 +110,7 @@ class TripControllerTest(
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data[0].country", equalTo("일본")))
             .andExpect(jsonPath("$.data[0].regionCode", equalTo("JP_TOKYO")))
+            .andExpect(jsonPath("$.data[0].members[0].avatar", equalTo("https://cdn.example.com/member.png")))
     }
 
     @Test
@@ -218,6 +228,7 @@ class TripControllerTest(
                 tripMemberId = 1L,
                 memberId = null,
                 nickname = "guest",
+                avatar = null,
                 role = "GUEST",
             ),
         ),

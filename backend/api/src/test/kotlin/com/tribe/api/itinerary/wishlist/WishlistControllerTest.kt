@@ -54,6 +54,7 @@ class WishlistControllerTest(
             .andExpect(jsonPath("$.data.name", equalTo("도쿄타워")))
             .andExpect(jsonPath("$.data.adder.tripMemberId", equalTo(3)))
             .andExpect(jsonPath("$.data.adder.nickname", equalTo("member")))
+            .andExpect(jsonPath("$.data.adder.avatar", equalTo("https://cdn.example.com/member.png")))
     }
 
     @Test
@@ -149,6 +150,7 @@ class WishlistControllerTest(
             tripMemberId = 3L,
             memberId = 2L,
             nickname = "member",
+            avatar = "https://cdn.example.com/member.png",
         ),
     )
 }

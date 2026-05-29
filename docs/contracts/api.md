@@ -46,6 +46,8 @@ Current route groups include:
 - `POST /api/v1/trips/{tripId}/invite`
 - `POST /api/v1/trips/join`
 - `POST /api/v1/trips/import`
+- Trip member payloads returned from trip summary/detail endpoints include `avatar: string | null`.
+- `GET /api/v1/trips` summary rows include `members[]` for rendering compact member profile stacks; `memberCount` remains the authoritative count.
 
 ### Itinerary and Places
 
@@ -53,6 +55,7 @@ Current route groups include:
 - `PATCH /api/v1/trips/{tripId}/items/order`
 - `GET /api/v1/trips/{tripId}/items/directions`
 - `GET /api/v1/places/search`
+- Wishlist item `adder` payloads include `avatar: string | null`.
 
 ### Expense and Settlement
 

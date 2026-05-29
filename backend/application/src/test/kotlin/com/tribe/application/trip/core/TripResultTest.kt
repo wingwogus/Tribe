@@ -21,7 +21,13 @@ class TripResultTest {
             country = Country.JAPAN,
         )
         ReflectionTestUtils.setField(trip, "id", 5L)
-        val member = Member(id = 1L, email = "user@test.com", passwordHash = "pw", nickname = "owner")
+        val member = Member(
+            id = 1L,
+            email = "user@test.com",
+            passwordHash = "pw",
+            nickname = "owner",
+            avatar = "https://cdn.example.com/owner.png",
+        )
         trip.members.add(TripMember(member = member, trip = trip, role = TripRole.OWNER))
 
         val simple = TripResult.SimpleTrip.from(trip)
@@ -29,6 +35,8 @@ class TripResultTest {
 
         assertEquals("일본", simple.country)
         assertEquals("JP", detail.country)
+        assertEquals("https://cdn.example.com/owner.png", simple.members.single().avatar)
+        assertEquals("https://cdn.example.com/owner.png", detail.members.single().avatar)
         assertNotEquals(simple.country, detail.country)
     }
 }

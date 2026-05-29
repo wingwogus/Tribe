@@ -43,6 +43,7 @@ interface BackendAdder {
   tripMemberId: number;
   memberId: number | null;
   nickname: string;
+  avatar?: string | null;
 }
 
 interface BackendWishlistItem {
@@ -73,7 +74,7 @@ const toWishlistItem = (item: BackendWishlistItem): WishlistItem => ({
   adder: {
     memberId: item.adder.memberId,
     nickname: item.adder.nickname,
-    avatar: null,
+    avatar: item.adder.avatar ?? null,
     role: "MEMBER",
   },
 });

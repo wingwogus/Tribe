@@ -61,6 +61,7 @@ export interface SimpleTrip {
   country: string;
   regionCode: string | null;
   memberCount: number;
+  members: MemberInfo[];
 }
 
 export interface PageResponse<T> {
@@ -137,6 +138,7 @@ interface BackendTripMember {
   tripMemberId: number;
   memberId: number | null;
   nickname: string;
+  avatar?: string | null;
   role: TripRole;
 }
 
@@ -148,6 +150,7 @@ interface BackendSimpleTrip {
   country: string;
   regionCode: string | null;
   memberCount: number;
+  members?: BackendTripMember[];
 }
 
 interface BackendTripDetail extends BackendSimpleTrip {
@@ -158,7 +161,7 @@ const toMemberInfo = (member: BackendTripMember): MemberInfo => ({
   memberId: member.memberId,
   tripMemberId: member.tripMemberId,
   nickname: member.nickname,
-  avatar: null,
+  avatar: member.avatar ?? null,
   role: member.role,
 });
 
@@ -180,6 +183,7 @@ const toSimpleTrip = (trip: BackendSimpleTrip): SimpleTrip => ({
   country: trip.country,
   regionCode: trip.regionCode ?? null,
   memberCount: trip.memberCount,
+  members: (trip.members ?? []).map(toMemberInfo),
 });
 
 const toPageResponse = <T>(content: T[], page: number, size: number): PageResponse<T> => ({
