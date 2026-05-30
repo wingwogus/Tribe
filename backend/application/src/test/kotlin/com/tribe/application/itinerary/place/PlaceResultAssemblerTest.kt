@@ -25,6 +25,7 @@ class PlaceResultAssemblerTest {
         assertEquals(4.7, detailView.placeDetailSummary?.rating)
         assertEquals(128, detailView.placeDetailSummary?.userRatingCount)
         assertEquals("유명한 스시집", detailView.placeDetailSummary?.editorialSummary)
+        assertEquals(2, detailView.priceLevel)
     }
 
     @Test
@@ -58,6 +59,7 @@ class PlaceResultAssemblerTest {
             place = place,
             rating = 4.7,
             userRatingCount = 128,
+            priceLevel = 2,
             editorialSummary = "유명한 스시집",
         )
         return place

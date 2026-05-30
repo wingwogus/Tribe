@@ -34,6 +34,7 @@ export interface PlaceDetailResponse {
   internationalPhoneNumber?: string | null;
   websiteUri?: string | null;
   googleMapsUri?: string | null;
+  priceLevel?: number | null;
   regularOpeningHoursJson?: string | null;
   currentOpeningHoursJson?: string | null;
 }

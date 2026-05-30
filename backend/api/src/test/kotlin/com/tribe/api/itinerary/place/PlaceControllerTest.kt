@@ -17,6 +17,7 @@ import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -115,6 +116,39 @@ class PlaceControllerTest(
             .andExpect(jsonPath("$.data[0].placeName", equalTo("Tokyo Cafe")))
             .andExpect(jsonPath("$.data[0].photoHint").doesNotExist())
             .andExpect(jsonPath("$.data[0].placeDetailSummary").doesNotExist())
+    }
+
+    @Test
+    fun `getPlaceDetail returns price level in detail response`() {
+        `when`(
+            placeSearchService.getPlaceDetail(10L, "ko"),
+        ).thenReturn(
+            PlaceResult.Detail(
+                placeId = 10L,
+                externalPlaceId = "google-place-1",
+                placeName = "Tokyo Cafe",
+                address = "Tokyo",
+                latitude = 35.6812,
+                longitude = 139.7671,
+                placeTypeSummary = null,
+                normalizedCategoryKey = null,
+                photoHint = null,
+                placeDetailSummary = null,
+                formattedPhoneNumber = null,
+                internationalPhoneNumber = null,
+                websiteUri = null,
+                googleMapsUri = null,
+                priceLevel = 2,
+                regularOpeningHoursJson = null,
+                currentOpeningHoursJson = null,
+            ),
+        )
+
+        mockMvc.perform(get("/api/v1/places/10"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.placeId", equalTo(10)))
+            .andExpect(jsonPath("$.data.priceLevel", equalTo(2)))
     }
 
     @Test

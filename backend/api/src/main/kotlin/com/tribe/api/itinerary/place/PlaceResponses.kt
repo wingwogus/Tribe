@@ -100,6 +100,7 @@ object PlaceResponses {
         val internationalPhoneNumber: String?,
         val websiteUri: String?,
         val googleMapsUri: String?,
+        val priceLevel: Int?,
         val regularOpeningHoursJson: String?,
         val currentOpeningHoursJson: String?,
     ) {
@@ -119,6 +120,7 @@ object PlaceResponses {
                 internationalPhoneNumber = view.internationalPhoneNumber,
                 websiteUri = view.websiteUri,
                 googleMapsUri = view.googleMapsUri,
+                priceLevel = view.priceLevel,
                 regularOpeningHoursJson = view.regularOpeningHoursJson,
                 currentOpeningHoursJson = view.currentOpeningHoursJson,
             )

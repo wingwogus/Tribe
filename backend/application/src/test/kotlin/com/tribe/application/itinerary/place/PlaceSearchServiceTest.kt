@@ -422,6 +422,7 @@ class PlaceSearchServiceTest {
             internationalPhoneNumber = null,
             websiteUri = null,
             googleMapsUri = null,
+            priceLevel = null,
             regularOpeningHoursJson = null,
             currentOpeningHoursJson = null,
         )

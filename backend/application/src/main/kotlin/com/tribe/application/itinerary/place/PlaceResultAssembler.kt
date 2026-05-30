@@ -67,6 +67,7 @@ class PlaceResultAssembler {
             internationalPhoneNumber = place.detailSnapshot?.internationalPhoneNumber,
             websiteUri = place.detailSnapshot?.websiteUri,
             googleMapsUri = place.detailSnapshot?.googleMapsUri,
+            priceLevel = place.detailSnapshot?.priceLevel,
             regularOpeningHoursJson = place.detailSnapshot?.regularOpeningHoursJson,
             currentOpeningHoursJson = place.detailSnapshot?.currentOpeningHoursJson,
         )

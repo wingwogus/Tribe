@@ -34,6 +34,7 @@ object PlaceResult {
         val internationalPhoneNumber: String?,
         val websiteUri: String?,
         val googleMapsUri: String?,
+        val priceLevel: Int?,
         val regularOpeningHoursJson: String?,
         val currentOpeningHoursJson: String?,
     )
