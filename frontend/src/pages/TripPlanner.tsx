@@ -26,6 +26,7 @@ import {
   MoreVertical,
   MoveRight,
   Plus,
+  RotateCw,
   ShoppingBag,
   Sparkles,
   Star,
@@ -147,8 +148,8 @@ const DEFAULT_NEARBY_RADIUS_METERS = 1000;
 const DESKTOP_PANEL_MARGIN = 16;
 const DESKTOP_PANEL_GAP = 12;
 const DESKTOP_QUICK_MENU_WIDTH = 84;
-const DESKTOP_ITINERARY_PANEL_WIDTH = 384;
-const DESKTOP_SECONDARY_PANEL_WIDTH = 400;
+const DESKTOP_ITINERARY_PANEL_WIDTH = 360;
+const DESKTOP_SECONDARY_PANEL_WIDTH = 376;
 const DESKTOP_PRIMARY_PANEL_LEFT = DESKTOP_PANEL_MARGIN + DESKTOP_QUICK_MENU_WIDTH + DESKTOP_PANEL_GAP;
 
 const getDesktopVisibleMapLeftInsetPx = (panelStackWidth: number) => (
@@ -782,7 +783,7 @@ const TripPlanner = () => {
     enabled: !!tripId,
   });
 
-  const wishlistItems = wishlistData?.content || [];
+  const wishlistItems = useMemo(() => wishlistData?.content ?? [], [wishlistData?.content]);
 
   const availableWishlistTypeFilters = useMemo(() => {
     const keys = new Set<string>();
@@ -858,6 +859,7 @@ const TripPlanner = () => {
         mode: "itinerary",
         name: selectedItineraryPlace.name,
         address: selectedItineraryPlace.location?.address,
+        visitDay: selectedItineraryPlace.visitDay,
         time: selectedItineraryPlace.time,
         memo: selectedItineraryPlace.memo,
         placeTypeSummary: selectedItineraryPlace.placeTypeSummary,
@@ -873,6 +875,7 @@ const TripPlanner = () => {
         name: selectedWishlistPlace.name,
         address: selectedWishlistPlace.address,
         adderNickname: selectedWishlistPlace.adder.nickname,
+        adderAvatar: selectedWishlistPlace.adder.avatar,
         placeTypeSummary: selectedWishlistPlace.placeTypeSummary,
         normalizedCategoryKey: selectedWishlistPlace.normalizedCategoryKey,
         placeDetailSummary: selectedWishlistPlace.placeDetailSummary,
@@ -1542,18 +1545,18 @@ const TripPlanner = () => {
   });
 
   // Delete itinerary from map
-  const handleDeleteItineraryFromMap = (itineraryId: number, visitDay: number) => {
+  const handleDeleteItineraryFromMap = useCallback((itineraryId: number, visitDay: number) => {
     if (window.confirm('이 일정을 삭제하시겠습니까?')) {
       deleteItineraryMutation.mutate({ visitDay, itemId: itineraryId });
     }
-  };
+  }, [deleteItineraryMutation]);
 
   // Delete wishlist from map
-  const handleDeleteWishlistFromMap = (wishlistItemId: number) => {
+  const handleDeleteWishlistFromMap = useCallback((wishlistItemId: number) => {
     if (window.confirm('위시리스트에서 삭제하시겠습니까?')) {
       deleteWishlistMutation.mutate(wishlistItemId);
     }
-  };
+  }, [deleteWishlistMutation]);
 
   const handleOpenSelectedPlaceInGoogleMaps = useCallback(() => {
     if (selectedPlaceDetail?.googleMapsUri) {
@@ -1579,7 +1582,7 @@ const TripPlanner = () => {
     if (selectedPlacePanel.mode === "wishlist" && selectedPlacePanel.wishlistItemId != null) {
       handleDeleteWishlistFromMap(selectedPlacePanel.wishlistItemId);
     }
-  }, [selectedPlacePanel]);
+  }, [handleDeleteItineraryFromMap, handleDeleteWishlistFromMap, selectedPlacePanel]);
 
   // Update itinerary order
   const updateItineraryOrderMutation = useMutation({
@@ -2394,8 +2397,8 @@ const TripPlanner = () => {
             disabled={isNearbyLoading}
             className="w-full"
           >
-            {isNearbyLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            이 위치에서 다시 검색
+            <RotateCw className={`mr-2 h-4 w-4 ${isNearbyLoading ? "animate-spin" : ""}`} />
+            이 위치에서 검색
           </Button>
         )}
 
@@ -3352,17 +3355,6 @@ const TripPlanner = () => {
             </div>
 
             <div className="flex w-fit max-w-full items-center gap-2">
-              {isNearbySearchAreaStale && (
-                <Button
-                  size="sm"
-                  onClick={() => void handleSearchNearby()}
-                  disabled={isNearbyLoading}
-                  className="h-9 rounded-full px-4 shadow-sm"
-                >
-                  {isNearbyLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  이 위치에서 다시 검색
-                </Button>
-              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -3381,6 +3373,26 @@ const TripPlanner = () => {
               </p>
             )}
           </div>
+
+          {isNearbySearchAreaStale && (
+            <div
+              className="pointer-events-none absolute bottom-6 left-3 right-3 z-20 flex justify-center md:bottom-8"
+              style={isMobile ? undefined : {
+                left: desktopNearbyControlsLeft,
+                right: DESKTOP_PANEL_MARGIN,
+              }}
+            >
+              <Button
+                size="sm"
+                onClick={() => void handleSearchNearby()}
+                disabled={isNearbyLoading}
+                className="pointer-events-auto h-10 rounded-full px-4 shadow-lg"
+              >
+                <RotateCw className={`mr-2 h-4 w-4 ${isNearbyLoading ? "animate-spin" : ""}`} />
+                이 위치에서 검색
+              </Button>
+            </div>
+          )}
 
           {isMobile && nearbyResults.length > 0 && (
             <Card className="absolute bottom-4 right-4 top-32 z-10 flex w-[min(calc(100%-2rem),380px)] flex-col overflow-hidden bg-white/95 shadow-lg backdrop-blur max-md:left-4 max-md:top-auto max-md:bottom-20 max-md:max-h-[48vh] max-md:w-auto">

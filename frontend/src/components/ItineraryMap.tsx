@@ -4,7 +4,7 @@ import {WishlistItem} from "@/api/wishlist";
 import {PlaceSearchResult} from "@/api/places";
 import {getCountryCoordinates} from "@/lib/countryCoordinates";
 import {getTripRegionCenter} from "@/lib/tripRegions";
-import {getPlaceCategoryColor} from "@/lib/placePresentation";
+import {getPlaceCategoryColor, getPlaceTypeKey} from "@/lib/placePresentation";
 import {
     CalendarPlus,
     ExternalLink,
@@ -66,6 +66,22 @@ type GooglePoiActionState = GooglePoiSelection & {
         y: number;
     };
 };
+type NearbyMarkerIconKey =
+    | "restaurant"
+    | "cafe"
+    | "bakery"
+    | "bar"
+    | "attraction"
+    | "shopping"
+    | "stay"
+    | "park"
+    | "museum"
+    | "transport"
+    | "place";
+type NearbyMarkerIconNode = [
+    tagName: "path" | "line" | "polygon" | "circle",
+    attributes: Record<string, string>,
+];
 
 const MIN_NEARBY_SEARCH_RADIUS_METERS = 100;
 const MAX_NEARBY_SEARCH_RADIUS_METERS = 5_000;
@@ -74,10 +90,113 @@ const DEFAULT_CENTER: [number, number] = [37.5665, 126.9780];
 const DEFAULT_PLACE_ZOOM = 12;
 const WEB_MERCATOR_TILE_SIZE = 256;
 const MAX_MERCATOR_LATITUDE = 85.05112878;
+const MAX_MAP_ZOOM = 21;
+const MAP_CAMERA_ANIMATION_DURATION_MS = 520;
 const GOOGLE_POI_ACTION_DOCK_WIDTH_PX = 292;
 const GOOGLE_POI_ACTION_DOCK_HEIGHT_PX = 48;
 const GOOGLE_POI_ACTION_DOCK_MARGIN_PX = 16;
 const GOOGLE_POI_ACTION_DOCK_OFFSET_PX = 22;
+const NEARBY_MARKER_SIZE_PX = 32;
+const NEARBY_MARKER_SELECTED_SIZE_PX = 38;
+const cameraAnimationFrames = new WeakMap<google.maps.Map, number>();
+
+const NEARBY_MARKER_ICON_NODES: Record<NearbyMarkerIconKey, NearbyMarkerIconNode[]> = {
+    restaurant: [
+        ["path", {d: "M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"}],
+        ["path", {d: "M7 2v20"}],
+        ["path", {d: "M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"}],
+    ],
+    cafe: [
+        ["path", {d: "M10 2v2"}],
+        ["path", {d: "M14 2v2"}],
+        ["path", {d: "M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"}],
+        ["path", {d: "M6 2v2"}],
+    ],
+    bakery: [
+        ["path", {d: "m4.6 13.11 5.79-3.21c1.89-1.05 4.79 1.78 3.71 3.71l-3.22 5.81C8.8 23.16.79 15.23 4.6 13.11Z"}],
+        ["path", {d: "m10.5 9.5-1-2.29C9.2 6.48 8.8 6 8 6H4.5C2.79 6 2 6.5 2 8.5a7.71 7.71 0 0 0 2 4.83"}],
+        ["path", {d: "M8 6c0-1.55.24-4-2-4-2 0-2.5 2.17-2.5 4"}],
+        ["path", {d: "m14.5 13.5 2.29 1c.73.3 1.21.7 1.21 1.5v3.5c0 1.71-.5 2.5-2.5 2.5a7.71 7.71 0 0 1-4.83-2"}],
+        ["path", {d: "M18 16c1.55 0 4-.24 4 2 0 2-2.17 2.5-4 2.5"}],
+    ],
+    bar: [
+        ["path", {d: "M8 22h8"}],
+        ["path", {d: "M7 10h10"}],
+        ["path", {d: "M12 15v7"}],
+        ["path", {d: "M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z"}],
+    ],
+    attraction: [
+        ["line", {x1: "3", x2: "21", y1: "22", y2: "22"}],
+        ["line", {x1: "6", x2: "6", y1: "18", y2: "11"}],
+        ["line", {x1: "10", x2: "10", y1: "18", y2: "11"}],
+        ["line", {x1: "14", x2: "14", y1: "18", y2: "11"}],
+        ["line", {x1: "18", x2: "18", y1: "18", y2: "11"}],
+        ["polygon", {points: "12 2 20 7 4 7"}],
+    ],
+    shopping: [
+        ["path", {d: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"}],
+        ["path", {d: "M3 6h18"}],
+        ["path", {d: "M16 10a4 4 0 0 1-8 0"}],
+    ],
+    stay: [
+        ["path", {d: "M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"}],
+        ["path", {d: "M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"}],
+        ["path", {d: "M12 4v6"}],
+        ["path", {d: "M2 18h20"}],
+    ],
+    park: [
+        ["path", {d: "m17 14 3 3.3a1 1 0 0 1-.7 1.7H4.7a1 1 0 0 1-.7-1.7L7 14h-.3a1 1 0 0 1-.7-1.7L9 9h-.2A1 1 0 0 1 8 7.3L12 3l4 4.3a1 1 0 0 1-.8 1.7H15l3 3.3a1 1 0 0 1-.7 1.7H17Z"}],
+        ["path", {d: "M12 22v-3"}],
+    ],
+    museum: [
+        ["line", {x1: "3", x2: "21", y1: "22", y2: "22"}],
+        ["line", {x1: "6", x2: "6", y1: "18", y2: "11"}],
+        ["line", {x1: "10", x2: "10", y1: "18", y2: "11"}],
+        ["line", {x1: "14", x2: "14", y1: "18", y2: "11"}],
+        ["line", {x1: "18", x2: "18", y1: "18", y2: "11"}],
+        ["polygon", {points: "12 2 20 7 4 7"}],
+    ],
+    transport: [
+        ["path", {d: "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"}],
+        ["circle", {cx: "12", cy: "10", r: "3"}],
+    ],
+    place: [
+        ["path", {d: "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"}],
+        ["circle", {cx: "12", cy: "10", r: "3"}],
+    ],
+};
+
+const NEARBY_MARKER_ICON_BY_TYPE: Record<string, NearbyMarkerIconKey> = {
+    KOREAN_FOOD: "restaurant",
+    JAPANESE_FOOD: "restaurant",
+    CHINESE_FOOD: "restaurant",
+    RESTAURANT: "restaurant",
+    CAFE: "cafe",
+    BAKERY: "bakery",
+    BAR: "bar",
+    ATTRACTION: "attraction",
+    SHOPPING: "shopping",
+    STAY: "stay",
+    PARK: "park",
+    MUSEUM: "museum",
+    TRANSPORT: "transport",
+    ETC: "place",
+    restaurant: "restaurant",
+    cafe: "cafe",
+    bakery: "bakery",
+    bar: "bar",
+    tourist_attraction: "attraction",
+    shopping_mall: "shopping",
+    store: "shopping",
+    convenience_store: "shopping",
+    lodging: "stay",
+    park: "park",
+    museum: "museum",
+    subway_station: "transport",
+    train_station: "transport",
+    airport: "transport",
+    bus_station: "transport",
+};
 
 const toLatLngLiteral = ([lat, lng]: [number, number]): google.maps.LatLngLiteral => ({lat, lng});
 
@@ -225,6 +344,110 @@ const getOffsetCenter = (
     );
 };
 
+const toLiteral = (latLng: google.maps.LatLng | google.maps.LatLngLiteral): google.maps.LatLngLiteral => {
+    if (latLng instanceof google.maps.LatLng) {
+        return {lat: latLng.lat(), lng: latLng.lng()};
+    }
+
+    return latLng;
+};
+
+const shouldReduceMotion = () =>
+    typeof window !== "undefined"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const easeInOutCubic = (progress: number) =>
+    progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - ((-2 * progress + 2) ** 3) / 2;
+
+const interpolateLongitude = (start: number, end: number, progress: number) => {
+    const delta = ((end - start + 540) % 360) - 180;
+    return start + delta * progress;
+};
+
+const cancelMapCameraAnimation = (currentMap: google.maps.Map) => {
+    const frameId = cameraAnimationFrames.get(currentMap);
+    if (frameId !== undefined) {
+        cancelAnimationFrame(frameId);
+        cameraAnimationFrames.delete(currentMap);
+    }
+};
+
+const animateMapCamera = (
+    currentMap: google.maps.Map,
+    target: { center: google.maps.LatLng | google.maps.LatLngLiteral; zoom?: number },
+    durationMs = MAP_CAMERA_ANIMATION_DURATION_MS,
+) => {
+    const targetCenter = toLiteral(target.center);
+    const targetZoom = target.zoom ?? currentMap.getZoom() ?? DEFAULT_PLACE_ZOOM;
+    const startCenter = currentMap.getCenter();
+    const startZoom = currentMap.getZoom() ?? targetZoom;
+
+    cancelMapCameraAnimation(currentMap);
+
+    if (!startCenter || shouldReduceMotion() || durationMs <= 0) {
+        currentMap.moveCamera({center: targetCenter, zoom: targetZoom});
+        return;
+    }
+
+    const start = {
+        lat: startCenter.lat(),
+        lng: startCenter.lng(),
+        zoom: startZoom,
+    };
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+        const progress = Math.min(1, (now - startTime) / durationMs);
+        const eased = easeInOutCubic(progress);
+        const center = {
+            lat: start.lat + (targetCenter.lat - start.lat) * eased,
+            lng: interpolateLongitude(start.lng, targetCenter.lng, eased),
+        };
+        const zoom = start.zoom + (targetZoom - start.zoom) * eased;
+
+        currentMap.moveCamera({center, zoom});
+
+        if (progress < 1) {
+            cameraAnimationFrames.set(currentMap, requestAnimationFrame(step));
+        } else {
+            cameraAnimationFrames.delete(currentMap);
+        }
+    };
+
+    cameraAnimationFrames.set(currentMap, requestAnimationFrame(step));
+};
+
+const latRad = (latitude: number) => {
+    const sin = Math.sin(latitude * Math.PI / 180);
+    const radX2 = Math.log((1 + sin) / (1 - sin)) / 2;
+
+    return Math.max(Math.min(radX2, Math.PI), -Math.PI) / 2;
+};
+
+const getBoundsZoom = (currentMap: google.maps.Map, bounds: google.maps.LatLngBounds, paddingPx: number) => {
+    const mapDiv = currentMap.getDiv();
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const mapWidth = Math.max(1, mapDiv.clientWidth - paddingPx * 2);
+    const mapHeight = Math.max(1, mapDiv.clientHeight - paddingPx * 2);
+    const latFraction = Math.max(0.000001, (latRad(ne.lat()) - latRad(sw.lat())) / Math.PI);
+    const lngDiff = ne.lng() - sw.lng();
+    const lngFraction = Math.max(0.000001, (lngDiff < 0 ? lngDiff + 360 : lngDiff) / 360);
+    const latZoom = Math.floor(Math.log(mapHeight / WEB_MERCATOR_TILE_SIZE / latFraction) / Math.LN2);
+    const lngZoom = Math.floor(Math.log(mapWidth / WEB_MERCATOR_TILE_SIZE / lngFraction) / Math.LN2);
+
+    return Math.max(0, Math.min(MAX_MAP_ZOOM, latZoom, lngZoom));
+};
+
+const smoothFitBounds = (currentMap: google.maps.Map, bounds: google.maps.LatLngBounds, paddingPx: number) => {
+    animateMapCamera(currentMap, {
+        center: bounds.getCenter(),
+        zoom: getBoundsZoom(currentMap, bounds, paddingPx),
+    });
+};
+
 const getGooglePoiActionAnchor = (
     currentMap: google.maps.Map,
     currentProjection: google.maps.MapCanvasProjection,
@@ -270,7 +493,7 @@ const focusMarker = (
         center = getOffsetCenter(latLng, offsetPx, zoom);
     }
 
-    map.moveCamera({center, zoom});
+    animateMapCamera(map, {center, zoom});
 };
 
 const applyBaseMarkerStyles = (
@@ -342,29 +565,87 @@ const buildWishlistMarkerContent = (color: string, isSelected: boolean) => {
     return svg;
 };
 
-const buildNearbyMarkerContent = (color: string, isSelected: boolean) => {
-    const size = isSelected ? 34 : 28;
-    const marker = document.createElement("div");
-    applyBaseMarkerStyles(
-        marker,
-        size,
-        color,
-        isSelected ? "0 12px 24px rgba(15,23,42,0.32)" : "0 5px 14px rgba(15,23,42,0.22)",
-        "999px 999px 999px 6px",
-    );
-    marker.style.transform = "rotate(-45deg)";
+const getNearbyMarkerSize = (isSelected: boolean) =>
+    isSelected ? NEARBY_MARKER_SELECTED_SIZE_PX : NEARBY_MARKER_SIZE_PX;
 
-    const dot = document.createElement("div");
-    const dotSize = Math.round(size * 0.36);
-    Object.assign(dot.style, {
-        background: "white",
-        borderRadius: "999px",
-        height: `${dotSize}px`,
-        width: `${dotSize}px`,
+const getNearbyMarkerAnchorLeft = (isSelected: boolean) =>
+    `calc(-100% + ${getNearbyMarkerSize(isSelected) / 2}px)`;
+
+const getNearbyMarkerIconKey = (place: PlaceSearchResult): NearbyMarkerIconKey => {
+    const typeKey = getPlaceTypeKey(place.placeTypeSummary, place.normalizedCategoryKey);
+    return (typeKey && NEARBY_MARKER_ICON_BY_TYPE[typeKey]) || "place";
+};
+
+const buildNearbyMarkerIcon = (iconKey: NearbyMarkerIconKey, size: number) => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", String(Math.round(size * 0.56)));
+    svg.setAttribute("height", String(Math.round(size * 0.56)));
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "#ffffff");
+    svg.setAttribute("stroke-width", iconKey === "place" ? "2.5" : "2.25");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    NEARBY_MARKER_ICON_NODES[iconKey].forEach(([tagName, attributes]) => {
+        const node = document.createElementNS("http://www.w3.org/2000/svg", tagName);
+        Object.entries(attributes).forEach(([name, value]) => {
+            node.setAttribute(name, value);
+        });
+        svg.appendChild(node);
     });
-    marker.appendChild(dot);
 
-    return marker;
+    return svg;
+};
+
+const buildNearbyMarkerContent = (label: string, color: string, isSelected: boolean, iconKey: NearbyMarkerIconKey) => {
+    const size = getNearbyMarkerSize(isSelected);
+    const root = document.createElement("div");
+    const text = document.createElement("div");
+    const marker = document.createElement("div");
+
+    Object.assign(root.style, {
+        alignItems: "center",
+        display: "flex",
+        gap: "6px",
+        pointerEvents: "auto",
+        transform: "translateZ(0)",
+    });
+
+    Object.assign(text.style, {
+        color,
+        fontSize: isSelected ? "15px" : "14px",
+        fontWeight: "800",
+        lineHeight: "1.15",
+        maxWidth: "132px",
+        overflow: "hidden",
+        textAlign: "right",
+        textOverflow: "ellipsis",
+        textShadow: "0 1px 0 #ffffff, 1px 0 0 #ffffff, -1px 0 0 #ffffff, 0 -1px 0 #ffffff, 0 2px 6px rgba(15,23,42,0.18)",
+        whiteSpace: "nowrap",
+    });
+    text.textContent = label;
+
+    Object.assign(marker.style, {
+        alignItems: "center",
+        background: color,
+        border: "4px solid #ffffff",
+        borderRadius: "999px",
+        boxShadow: isSelected
+            ? "0 0 0 4px rgba(255,255,255,0.72), 0 12px 24px rgba(15,23,42,0.32)"
+            : "0 2px 4px rgba(15,23,42,0.18), 0 5px 12px rgba(15,23,42,0.22)",
+        display: "flex",
+        height: `${size}px`,
+        justifyContent: "center",
+        width: `${size}px`,
+    });
+    marker.appendChild(buildNearbyMarkerIcon(iconKey, size));
+
+    root.appendChild(text);
+    root.appendChild(marker);
+
+    return root;
 };
 
 const clearMarkerRecords = <T,>(records: Map<T, MarkerRecord>) => {
@@ -574,6 +855,9 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                     polyline.current.setMap(null);
                     polyline.current = null;
                 }
+                if (map.current) {
+                    cancelMapCameraAnimation(map.current);
+                }
                 projectionOverlay.current?.setMap(null);
                 projectionOverlay.current = null;
                 projection.current = null;
@@ -677,8 +961,10 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
         useEffect(() => {
             if (!isMapReady || !map.current || validItineraries.length > 0) return;
 
-            map.current.setCenter(toLatLngLiteral(defaultCenter));
-            map.current.setZoom(DEFAULT_PLACE_ZOOM);
+            animateMapCamera(map.current, {
+                center: toLatLngLiteral(defaultCenter),
+                zoom: DEFAULT_PLACE_ZOOM,
+            });
         }, [defaultCenter, isMapReady, validItineraries.length]);
 
         useEffect(() => {
@@ -742,12 +1028,14 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
                 if (lastFittedItineraryKey.current !== itineraryCoordinatesKey) {
                     const bounds = new google.maps.LatLngBounds();
                     latLngs.forEach((latLng) => bounds.extend(latLng));
-                    map.current.fitBounds(bounds, 50);
+                    smoothFitBounds(map.current, bounds, 50);
                     lastFittedItineraryKey.current = itineraryCoordinatesKey;
                 }
             } else if (latLngs.length === 1 && lastFittedItineraryKey.current !== itineraryCoordinatesKey) {
-                map.current.setCenter(latLngs[0]);
-                map.current.setZoom(13);
+                animateMapCamera(map.current, {
+                    center: latLngs[0],
+                    zoom: 13,
+                });
                 lastFittedItineraryKey.current = itineraryCoordinatesKey;
             }
         }, [isMapReady, itineraryCoordinatesKey, onSelectItineraryMarker, selectedItineraryId, validItineraries]);
@@ -790,10 +1078,11 @@ export const ItineraryMap = forwardRef<ItineraryMapHandle, ItineraryMapProps>(
 
                 const markerColor = getPlaceCategoryColor(place.placeTypeSummary, place.normalizedCategoryKey);
                 const isSelected = place.externalPlaceId === selectedNearbyPlaceExternalId;
+                const iconKey = getNearbyMarkerIconKey(place);
                 const marker = new libraries.AdvancedMarkerElement({
-                    anchorLeft: "-50%",
-                    anchorTop: "-100%",
-                    content: buildNearbyMarkerContent(markerColor, isSelected),
+                    anchorLeft: getNearbyMarkerAnchorLeft(isSelected),
+                    anchorTop: "-50%",
+                    content: buildNearbyMarkerContent(place.placeName, markerColor, isSelected, iconKey),
                     gmpClickable: true,
                     map: map.current,
                     position: {lat: place.latitude, lng: place.longitude},
