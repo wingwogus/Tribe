@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param
 interface ItineraryItemRepository : JpaRepository<ItineraryItem, Long> {
     fun findByTripIdAndVisitDayOrderByOrderAsc(tripId: Long, visitDay: Int): List<ItineraryItem>
     fun countByTripIdAndVisitDay(tripId: Long, visitDay: Int): Int
+    fun findByTripIdAndVisitDayGreaterThanOrderByVisitDayAscOrderAsc(tripId: Long, visitDay: Int): List<ItineraryItem>
 
     @Query("select i from ItineraryItem i where i.id in :itemIds and i.trip.id = :tripId")
     fun findByIdInAndTripId(@Param("itemIds") itemIds: List<Long>, @Param("tripId") tripId: Long): List<ItineraryItem>

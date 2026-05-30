@@ -4,7 +4,8 @@ import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.redis.TripInvitationRepository
 import com.tribe.application.security.CurrentActor
-import com.tribe.application.trip.member.TripMemberIntegrityService
+import com.tribe.application.trip.event.ItineraryAction
+import com.tribe.application.trip.event.ItineraryEvent
 import com.tribe.application.trip.event.TripLifecycleAction
 import com.tribe.application.trip.event.TripLifecycleEvent
 import com.tribe.application.trip.event.TripMemberAction
@@ -13,8 +14,10 @@ import com.tribe.application.trip.event.TripRealtimeEvent
 import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.event.TripSummary
+import com.tribe.application.trip.member.TripMemberIntegrityService
 import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.trip.core.Country
 import com.tribe.domain.trip.core.TripRegion
@@ -31,6 +34,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
 import java.time.Duration
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 
 @Service
@@ -46,6 +51,7 @@ class TripService(
     private val tripInvitationRepository: TripInvitationRepository,
     private val communityPostRepository: CommunityPostRepository,
     private val wishlistItemRepository: WishlistItemRepository,
+    private val itineraryItemRepository: ItineraryItemRepository,
     @Value("\${app.url}") private val appUrl: String,
 ) {
     companion object {
@@ -110,6 +116,7 @@ class TripService(
         val trip = findTripWithMembers(command.tripId)
         val country = resolveCountry(command.country)
         val regionCode = resolveRegionCodeForUpdate(trip, country, command.regionCode)
+        applyDateShrinkPolicy(command, trip)
         trip.update(command.title, command.startDate, command.endDate, country, regionCode)
         return TripResult.TripDetail.from(trip)
     }
@@ -314,6 +321,52 @@ class TripService(
         }
         return validateRegionCode(country, requestedRegionCode)
     }
+
+    private fun applyDateShrinkPolicy(command: TripCommand.Update, trip: Trip) {
+        val currentTotalDays = totalDaysInclusive(trip.startDate, trip.endDate)
+        val newTotalDays = totalDaysInclusive(command.startDate, command.endDate)
+        if (newTotalDays >= currentTotalDays) return
+
+        val outOfRangeItems = itineraryItemRepository
+            .findByTripIdAndVisitDayGreaterThanOrderByVisitDayAscOrderAsc(command.tripId, newTotalDays)
+        if (outOfRangeItems.isEmpty()) return
+
+        if (!command.deleteOutOfRangeItems) {
+            throw BusinessException(
+                errorCode = ErrorCode.TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION,
+                detail = buildOutOfRangeItemDeletionDetail(outOfRangeItems, newTotalDays),
+            )
+        }
+
+        itineraryItemRepository.deleteAll(outOfRangeItems)
+        val actorId = currentActor.requireUserId()
+        outOfRangeItems.forEach { item ->
+            tripRealtimeEventPublisher.publish(
+                TripRealtimeEvent(
+                    type = TripRealtimeEventType.ITINERARY,
+                    tripId = command.tripId,
+                    actorId = actorId,
+                    itinerary = ItineraryEvent(action = ItineraryAction.ITEM_DELETED, deletedItemId = item.id),
+                ),
+            )
+        }
+    }
+
+    private fun buildOutOfRangeItemDeletionDetail(items: List<ItineraryItem>, newTotalDays: Int): Map<String, Any?> =
+        mapOf(
+            "outOfRangeItemCount" to items.size,
+            "newTotalDays" to newTotalDays,
+            "outOfRangeItems" to items.map { item ->
+                mapOf(
+                    "itemId" to item.id,
+                    "visitDay" to item.visitDay,
+                    "title" to (item.title ?: item.place?.name),
+                )
+            },
+        )
+
+    private fun totalDaysInclusive(startDate: LocalDate, endDate: LocalDate): Int =
+        ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
 
     private fun findTripWithMembers(tripId: Long): Trip =
         tripRepository.findTripWithMembersById(tripId)

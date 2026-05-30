@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import { authenticatedAxios, type ApiResponse } from "@/api/http";
 
 export enum Country {
@@ -107,6 +109,17 @@ export interface UpdateTripRequest {
   endDate: string;
   country: Country;
   regionCode?: string | null;
+  deleteOutOfRangeItems?: boolean;
+}
+
+export interface TripDateRangeDeletionConflictDetail {
+  outOfRangeItemCount: number;
+  newTotalDays: number;
+  outOfRangeItems: Array<{
+    itemId: number;
+    visitDay: number;
+    title: string | null;
+  }>;
 }
 
 export interface InvitationResponse {
@@ -228,6 +241,44 @@ const findGuestMember = (trip: TripDetail, nickname: string): GuestMember => {
     id: guest.tripMemberId,
     name: guest.nickname,
     isGuest: true,
+  };
+};
+
+const TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION_CODE = "TRIP_008";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const toNumber = (value: unknown, fallback = 0) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+export const getTripDateRangeDeletionConflict = (
+  error: unknown,
+): TripDateRangeDeletionConflictDetail | null => {
+  if (!axios.isAxiosError<ApiResponse<unknown>>(error)) return null;
+
+  const apiError = error.response?.data?.error;
+  if (apiError?.code !== TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION_CODE) return null;
+
+  const detail = isRecord(apiError.detail) ? apiError.detail : {};
+  const rawItems = Array.isArray(detail.outOfRangeItems) ? detail.outOfRangeItems : [];
+
+  return {
+    outOfRangeItemCount: toNumber(detail.outOfRangeItemCount),
+    newTotalDays: toNumber(detail.newTotalDays),
+    outOfRangeItems: rawItems
+      .filter(isRecord)
+      .map((item) => ({
+        itemId: toNumber(item.itemId),
+        visitDay: toNumber(item.visitDay),
+        title: typeof item.title === "string" && item.title.trim() ? item.title : null,
+      })),
   };
 };
 

@@ -26,6 +26,7 @@ enum class ErrorCode(
     ALREADY_JOINED_TRIP("TRIP_005", "error.already_joined_trip", 409),
     BANNED_MEMBER("TRIP_006", "error.banned_member", 403),
     TRIP_REVIEW_NOT_FOUND("TRIP_007", "error.trip_review_not_found", 404),
+    TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION("TRIP_008", "error.trip_date_range_requires_item_deletion", 409),
     AI_FEEDBACK_ERROR("COMMON_012", "error.ai_feedback_error", 502),
     POST_NOT_FOUND("COMMUNITY_001", "error.post_not_found", 404),
     IMAGE_UPLOAD_FAILED("COMMON_010", "error.image_upload_failed", 500),

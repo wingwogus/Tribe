@@ -18,6 +18,7 @@ object TripCommand {
         val endDate: LocalDate,
         val country: String,
         val regionCode: String? = null,
+        val deleteOutOfRangeItems: Boolean = false,
     )
 
     data class Join(

@@ -9,6 +9,7 @@ import com.tribe.application.trip.member.TripMemberIntegrityService
 import com.tribe.domain.community.CommunityPost
 import com.tribe.domain.community.CommunityPostRepository
 import com.tribe.domain.itinerary.item.ItineraryItem
+import com.tribe.domain.itinerary.item.ItineraryItemRepository
 import com.tribe.domain.itinerary.wishlist.WishlistItemRepository
 import com.tribe.domain.member.Member
 import com.tribe.domain.member.MemberRepository
@@ -25,9 +26,13 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.mockito.ArgumentMatchers.anyInt
+import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.Mock
 import org.mockito.Mockito.any
 import org.mockito.Mockito.inOrder
+import org.mockito.Mockito.lenient
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
@@ -46,11 +51,16 @@ class TripServiceTest {
     @Mock private lateinit var tripInvitationRepository: TripInvitationRepository
     @Mock private lateinit var communityPostRepository: CommunityPostRepository
     @Mock private lateinit var wishlistItemRepository: WishlistItemRepository
+    @Mock private lateinit var itineraryItemRepository: ItineraryItemRepository
 
     private lateinit var tripService: TripService
 
     @BeforeEach
     fun setUp() {
+        lenient()
+            .`when`(itineraryItemRepository.findByTripIdAndVisitDayGreaterThanOrderByVisitDayAscOrderAsc(anyLong(), anyInt()))
+            .thenReturn(emptyList())
+
         tripService = TripService(
             currentActor = currentActor,
             tripAuthorizationPolicy = tripAuthorizationPolicy,
@@ -62,6 +72,7 @@ class TripServiceTest {
             tripInvitationRepository = tripInvitationRepository,
             communityPostRepository = communityPostRepository,
             wishlistItemRepository = wishlistItemRepository,
+            itineraryItemRepository = itineraryItemRepository,
             appUrl = "http://localhost:3000",
         )
     }
@@ -137,6 +148,74 @@ class TripServiceTest {
 
         assertEquals(null, result.regionCode)
         assertEquals(null, trip.regionCode)
+    }
+
+    @Test
+    fun `updateTrip returns conflict when date shrink leaves itinerary items out of range`() {
+        val trip = Trip(
+            "Trip",
+            LocalDate.of(2026, 4, 12),
+            LocalDate.of(2026, 4, 17),
+            Country.JAPAN,
+            TripRegion.JP_TOKYO.code,
+        )
+        val outOfRangeItem = ItineraryItem(trip, 3, null, "Dinner", null, 1, null)
+
+        `when`(tripRepository.findTripWithMembersById(5L)).thenReturn(trip)
+        `when`(itineraryItemRepository.findByTripIdAndVisitDayGreaterThanOrderByVisitDayAscOrderAsc(5L, 2))
+            .thenReturn(listOf(outOfRangeItem))
+
+        val ex = assertThrows(BusinessException::class.java) {
+            tripService.updateTrip(
+                TripCommand.Update(
+                    tripId = 5L,
+                    title = "Short trip",
+                    startDate = LocalDate.of(2026, 4, 12),
+                    endDate = LocalDate.of(2026, 4, 13),
+                    country = Country.JAPAN.code,
+                    regionCode = TripRegion.JP_TOKYO.code,
+                ),
+            )
+        }
+
+        val detail = ex.detail as Map<*, *>
+        assertEquals(ErrorCode.TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION, ex.errorCode)
+        assertEquals(1, detail["outOfRangeItemCount"])
+        assertEquals(2, detail["newTotalDays"])
+        assertEquals(LocalDate.of(2026, 4, 17), trip.endDate)
+    }
+
+    @Test
+    fun `updateTrip deletes out of range itinerary items when destructive save is confirmed`() {
+        val trip = Trip(
+            "Trip",
+            LocalDate.of(2026, 4, 12),
+            LocalDate.of(2026, 4, 17),
+            Country.JAPAN,
+            TripRegion.JP_TOKYO.code,
+        )
+        val outOfRangeItem = ItineraryItem(trip, 3, null, "Dinner", null, 1, null)
+
+        `when`(currentActor.requireUserId()).thenReturn(1L)
+        `when`(tripRepository.findTripWithMembersById(5L)).thenReturn(trip)
+        `when`(itineraryItemRepository.findByTripIdAndVisitDayGreaterThanOrderByVisitDayAscOrderAsc(5L, 2))
+            .thenReturn(listOf(outOfRangeItem))
+
+        val result = tripService.updateTrip(
+            TripCommand.Update(
+                tripId = 5L,
+                title = "Short trip",
+                startDate = LocalDate.of(2026, 4, 12),
+                endDate = LocalDate.of(2026, 4, 13),
+                country = Country.JAPAN.code,
+                regionCode = TripRegion.JP_TOKYO.code,
+                deleteOutOfRangeItems = true,
+            ),
+        )
+
+        assertEquals("Short trip", result.title)
+        assertEquals(LocalDate.of(2026, 4, 13), trip.endDate)
+        verify(itineraryItemRepository).deleteAll(listOf(outOfRangeItem))
     }
 
     @Test

@@ -12,11 +12,19 @@ import {TripEditModal} from "@/components/TripEditModal";
 import {TripDeleteDialog} from "@/components/TripDeleteDialog";
 import {Header} from "@/components/Header";
 import {getMemberInfo, logout} from "@/api/auth";
-import {type MemberInfo, type SimpleTrip, tripApi, type TripDetail, type UpdateTripRequest} from "@/api/trips";
+import {
+  getTripDateRangeDeletionConflict,
+  type MemberInfo,
+  type SimpleTrip,
+  tripApi,
+  type TripDetail,
+  type UpdateTripRequest,
+} from "@/api/trips";
 import {useToast} from "@/hooks/use-toast";
 import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {formatTripDestination} from "@/lib/tripRegions";
+import {tripQueryKeys} from "@/lib/tripQueryKeys";
 
 const dayMs = 1000 * 60 * 60 * 24;
 
@@ -149,15 +157,20 @@ const Dashboard = () => {
   const updateTripMutation = useMutation({
     mutationFn: ({ tripId, updates }: { tripId: number; updates: UpdateTripRequest }) =>
       tripApi.updateTrip(tripId, updates),
-    onSuccess: () => {
+    onSuccess: (updatedTrip) => {
       queryClient.invalidateQueries({ queryKey: ['trips'] });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.trip(updatedTrip.tripId) });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.itinerary(updatedTrip.tripId) });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(updatedTrip.tripId) });
       toast({
         title: "수정 완료",
         description: "여행 정보가 수정되었습니다.",
       });
       setEditingTrip(null);
     },
-    onError: () => {
+    onError: (error) => {
+      if (getTripDateRangeDeletionConflict(error)) return;
+
       toast({
         title: "오류",
         description: "여행 수정에 실패했습니다.",
@@ -180,8 +193,8 @@ const Dashboard = () => {
   };
 
   const handleUpdateTrip = (updates: UpdateTripRequest) => {
-    if (!editingTrip) return;
-    updateTripMutation.mutate({ tripId: editingTrip.tripId, updates });
+    if (!editingTrip) return Promise.reject(new Error("수정할 여행을 찾을 수 없습니다."));
+    return updateTripMutation.mutateAsync({ tripId: editingTrip.tripId, updates });
   };
 
   // Delete trip mutation
@@ -530,6 +543,7 @@ const Dashboard = () => {
           onClose={() => setEditingTrip(null)}
           trip={editingTrip}
           onUpdateTrip={handleUpdateTrip}
+          isSaving={updateTripMutation.isPending}
         />
       )}
 
