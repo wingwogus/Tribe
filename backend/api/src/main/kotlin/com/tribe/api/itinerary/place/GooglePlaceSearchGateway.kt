@@ -17,7 +17,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import java.time.Duration
 import java.util.Locale
+import java.util.concurrent.TimeoutException
 
 @Component
 @ConditionalOnProperty(name = ["tribe.itinerary.place-search.enabled"], havingValue = "true", matchIfMissing = true)
@@ -25,9 +27,11 @@ class GooglePlaceSearchGateway(
     private val webClientBuilder: WebClient.Builder,
     private val objectMapper: ObjectMapper,
     @Value("\${google.maps.key}") private val apiKey: String,
+    @Value("\${google.maps.timeout-ms:5000}") private val timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        private const val DEFAULT_TIMEOUT_MILLIS = 5_000L
         internal const val NEARBY_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types"
         internal const val PLACE_SUMMARY_FIELD_MASK =
@@ -38,6 +42,7 @@ class GooglePlaceSearchGateway(
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private val webClient = webClientBuilder.build()
+    private val placesTimeout: Duration = Duration.ofMillis(timeoutMillis)
 
     override fun search(query: String?, language: String, context: PlaceSearchContext): List<PlaceSearchGateway.SearchHit> {
         val body = buildSearchRequestBody(query, language, context) ?: return emptyList()
@@ -80,6 +85,7 @@ class GooglePlaceSearchGateway(
             .bodyValue(body)
             .retrieve()
             .bodyToMono(PlacesResponse::class.java)
+            .timeout(placesTimeout)
             .doOnError(WebClientResponseException::class.java) { ex ->
                 logger.error(
                     "Google Places searchNearby failed: status={}, category={}, radiusMeters={}, body={}",
@@ -90,11 +96,21 @@ class GooglePlaceSearchGateway(
                     ex,
                 )
             }
+            .doOnError(TimeoutException::class.java) {
+                logger.error(
+                    "Google Places searchNearby timed out: category={}, radiusMeters={}, timeoutMillis={}",
+                    request.category.name,
+                    request.radiusMeters,
+                    timeoutMillis,
+                    it,
+                )
+            }
+            .onErrorMap(TimeoutException::class.java) { BusinessException(ErrorCode.EXTERNAL_API_ERROR) }
             .doOnError { logger.error("Error calling Google Places Nearby API", it) }
             .block()
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
-        return response.places?.map { toSearchHit(it) } ?: emptyList()
+        return response.places?.mapNotNull { toNearbySearchHit(it) } ?: emptyList()
     }
 
     override fun getPlaceSummary(externalPlaceId: String, language: String): PlaceSearchGateway.SearchHit? {
@@ -355,6 +371,20 @@ class GooglePlaceSearchGateway(
             address = place.formattedAddress ?: "주소 정보 없음",
             latitude = place.location?.latitude ?: 0.0,
             longitude = place.location?.longitude ?: 0.0,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+        )
+    }
+
+    internal fun toNearbySearchHit(place: PlacesResponse.PlaceResult): PlaceSearchGateway.SearchHit? {
+        val location = place.location ?: return null
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = location.latitude,
+            longitude = location.longitude,
             primaryType = placeTypeSummary?.primaryType,
             types = placeTypeSummary?.types ?: emptyList(),
         )

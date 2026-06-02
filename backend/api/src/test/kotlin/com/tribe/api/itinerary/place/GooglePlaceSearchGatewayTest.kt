@@ -1,14 +1,18 @@
 package com.tribe.api.itinerary.place
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.itinerary.place.NearbyPlaceCategory
 import com.tribe.application.itinerary.place.PlaceSearchContext
 import com.tribe.application.itinerary.place.PlaceSearchGateway
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Mono
 
 class GooglePlaceSearchGatewayTest {
     private val gateway = GooglePlaceSearchGateway(
@@ -115,6 +119,76 @@ class GooglePlaceSearchGatewayTest {
         assertFalse(GooglePlaceSearchGateway.NEARBY_FIELD_MASK.contains("photos"))
         assertFalse(GooglePlaceSearchGateway.NEARBY_FIELD_MASK.contains("openingHours"))
         assertFalse(GooglePlaceSearchGateway.NEARBY_FIELD_MASK.contains("editorialSummary"))
+    }
+
+    @Test
+    fun `toNearbySearchHit drops places without location`() {
+        val hit = gateway.toNearbySearchHit(
+            GooglePlaceSearchGateway.PlacesResponse.PlaceResult(
+                id = "places/missing-location",
+                formattedAddress = "Unknown",
+                location = null,
+                displayName = GooglePlaceSearchGateway.PlacesResponse.DisplayName(
+                    text = "Missing Location Cafe",
+                    languageCode = "ko",
+                ),
+                primaryType = "cafe",
+                types = listOf("cafe"),
+            ),
+        )
+
+        assertNull(hit)
+    }
+
+    @Test
+    fun `toNearbySearchHit preserves valid nearby coordinates`() {
+        val hit = gateway.toNearbySearchHit(
+            GooglePlaceSearchGateway.PlacesResponse.PlaceResult(
+                id = "places/tokyo-cafe",
+                formattedAddress = "Tokyo",
+                location = GooglePlaceSearchGateway.PlacesResponse.Location(
+                    latitude = 35.6812,
+                    longitude = 139.7671,
+                ),
+                displayName = GooglePlaceSearchGateway.PlacesResponse.DisplayName(
+                    text = "Tokyo Cafe",
+                    languageCode = "ko",
+                ),
+                primaryType = "cafe",
+                types = listOf("cafe", "coffee_shop"),
+            ),
+        )
+
+        requireNotNull(hit)
+        assertEquals("places/tokyo-cafe", hit.externalPlaceId)
+        assertEquals(35.6812, hit.latitude)
+        assertEquals(139.7671, hit.longitude)
+    }
+
+    @Test
+    fun `searchNearby maps google timeout to external api error`() {
+        val timeoutGateway = GooglePlaceSearchGateway(
+            webClientBuilder = WebClient.builder().exchangeFunction { Mono.never() },
+            objectMapper = ObjectMapper(),
+            apiKey = "test-key",
+            timeoutMillis = 1,
+        )
+
+        val exception = assertThrows(BusinessException::class.java) {
+            timeoutGateway.searchNearby(
+                PlaceSearchGateway.NearbySearchRequest(
+                    latitude = 35.6812,
+                    longitude = 139.7671,
+                    radiusMeters = 1000,
+                    maxResultCount = 10,
+                    category = NearbyPlaceCategory.CAFE,
+                    language = "ko",
+                    region = "JP",
+                ),
+            )
+        }
+
+        assertEquals(ErrorCode.EXTERNAL_API_ERROR, exception.errorCode)
     }
 
     @Test

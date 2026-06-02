@@ -22,9 +22,12 @@ class PlaceSearchService(
     companion object {
         private const val MAX_TEXT_SEARCH_RADIUS_METERS = 50_000
         private const val MAX_NEARBY_RADIUS_METERS = 5_000
+        private const val NEARBY_RADIUS_BUCKET_METERS = 100
+        private const val MAX_LANGUAGE_TAG_LENGTH = 20
         private const val MIN_MAX_RESULT_COUNT = 1
         private const val MAX_MAX_RESULT_COUNT = 20
         private val SEARCH_CACHE_TTL: Duration = Duration.ofHours(6)
+        private val LANGUAGE_TAG_PATTERN = Regex("^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8}){0,2}$")
     }
 
     fun search(
@@ -83,10 +86,10 @@ class PlaceSearchService(
     ): List<PlaceResult.SearchItem> {
         val normalizedLatitude = validateLatitude(latitude)
         val normalizedLongitude = validateLongitude(longitude)
-        val normalizedRadius = validateRadius(radiusMeters)
+        val normalizedRadius = normalizeNearbyRadius(validateRadius(radiusMeters))
         val normalizedMaxResultCount = validateMaxResultCount(maxResultCount)
         val normalizedCategory = validateCategory(category)
-        val normalizedLanguage = language?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: "ko"
+        val normalizedLanguage = validateLanguage(language)
         val normalizedRegion = normalizeRegion(region)
 
         val request = PlaceSearchGateway.NearbySearchRequest(
@@ -175,6 +178,11 @@ class PlaceSearchService(
         return value
     }
 
+    private fun normalizeNearbyRadius(value: Int): Int {
+        return (((value + NEARBY_RADIUS_BUCKET_METERS - 1) / NEARBY_RADIUS_BUCKET_METERS) * NEARBY_RADIUS_BUCKET_METERS)
+            .coerceAtMost(MAX_NEARBY_RADIUS_METERS)
+    }
+
     private fun validateMaxResultCount(value: Int?): Int {
         if (value == null || value !in MIN_MAX_RESULT_COUNT..MAX_MAX_RESULT_COUNT) {
             throw invalidNearbyInput("maxResultCount", value)
@@ -186,6 +194,14 @@ class PlaceSearchService(
         val normalized = value?.trim()?.uppercase(Locale.ROOT)
         return NearbyPlaceCategory.entries.firstOrNull { it.name == normalized }
             ?: throw invalidNearbyInput("category", value)
+    }
+
+    private fun validateLanguage(value: String?): String {
+        val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return "ko"
+        if (normalized.length > MAX_LANGUAGE_TAG_LENGTH || !LANGUAGE_TAG_PATTERN.matches(normalized)) {
+            throw invalidNearbyInput("language", value)
+        }
+        return normalized.lowercase(Locale.ROOT)
     }
 
     private fun normalizeRegion(value: String?): String? {

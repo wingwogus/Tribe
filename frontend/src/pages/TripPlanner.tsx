@@ -1102,7 +1102,11 @@ const TripPlanner = () => {
   const handleSearchNearby = useCallback(async (overrides?: {
     category?: NearbyPlaceCategory;
   }) => {
-    const searchArea = mapRef.current?.getSearchArea();
+    const searchArea = mapRef.current?.getSearchArea({
+      visibleLeftInsetPx: isMobile
+        ? 0
+        : getDesktopVisibleMapLeftInsetPx(DESKTOP_ITINERARY_PANEL_WIDTH),
+    });
     if (!searchArea) {
       if (!isMobile) {
         openDesktopNearbyPanel();

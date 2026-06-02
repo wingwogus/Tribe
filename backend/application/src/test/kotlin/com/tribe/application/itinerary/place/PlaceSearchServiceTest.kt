@@ -157,6 +157,54 @@ class PlaceSearchServiceTest {
     }
 
     @Test
+    fun `searchNearby buckets nearby radius before gateway and cache`() {
+        val expectedRequest = PlaceSearchGateway.NearbySearchRequest(
+            latitude = 35.6812,
+            longitude = 139.7671,
+            radiusMeters = 1100,
+            maxResultCount = 10,
+            category = NearbyPlaceCategory.CAFE,
+            language = "ko",
+            region = "JP",
+        )
+        val expectedKey = "nearby:v1|CAFE|ko|JP|1100|10|35.6812|139.7671"
+        `when`(cacheRepository.get(expectedKey)).thenReturn(null)
+        `when`(placeSearchGateway.searchNearby(expectedRequest)).thenReturn(emptyList())
+        `when`(placeCatalogService.mergeWithCanonical(emptyList())).thenReturn(emptyList())
+
+        service.searchNearby(
+            latitude = 35.6812,
+            longitude = 139.7671,
+            radiusMeters = 1001,
+            maxResultCount = 10,
+            category = "CAFE",
+            language = "ko",
+            region = "JP",
+        )
+
+        verify(placeSearchGateway).searchNearby(expectedRequest)
+        verify(cacheRepository).put(expectedKey, emptyList(), java.time.Duration.ofHours(6))
+    }
+
+    @Test
+    fun `searchNearby rejects invalid language tag`() {
+        val exception = assertThrows(BusinessException::class.java) {
+            service.searchNearby(
+                latitude = 35.0,
+                longitude = 139.0,
+                radiusMeters = 1000,
+                maxResultCount = 10,
+                category = "CAFE",
+                language = "ko<script>",
+                region = "JP",
+            )
+        }
+
+        assertEquals(ErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(placeSearchGateway)
+    }
+
+    @Test
     fun `searchNearby equivalent coordinates share quantized cache key`() {
         val cached = listOf(
             PlaceSearchGateway.SearchHit(
