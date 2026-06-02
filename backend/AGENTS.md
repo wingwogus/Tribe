@@ -50,6 +50,10 @@ Examples from the current codebase:
 - `com.tribe.application.auth.AuthCommand`
 - `com.tribe.application.auth.AuthResult`
 
+## Comment Rules
+
+Follow `../docs/backend-comment-conventions.md` when adding or updating backend comments.
+
 ## Commands
 
 Run from `backend/`:

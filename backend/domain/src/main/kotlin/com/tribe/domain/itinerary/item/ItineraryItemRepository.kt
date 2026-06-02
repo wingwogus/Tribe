@@ -4,6 +4,11 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
+/**
+ * 일정 아이템 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface ItineraryItemRepository : JpaRepository<ItineraryItem, Long> {
     fun findByTripIdAndVisitDayOrderByOrderAsc(tripId: Long, visitDay: Int): List<ItineraryItem>
     fun countByTripIdAndVisitDay(tripId: Long, visitDay: Int): Int

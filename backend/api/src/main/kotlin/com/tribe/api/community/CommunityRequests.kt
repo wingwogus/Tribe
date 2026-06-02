@@ -6,6 +6,11 @@ import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 
+/**
+ * 커뮤니티 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object CommunityRequests {
     data class CreatePostRequest(
         @field:NotNull(message = "공유할 여행 ID는 필수입니다.")

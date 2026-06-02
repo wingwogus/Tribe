@@ -4,6 +4,11 @@ import com.tribe.application.expense.ExpenseResult
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 지출 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object ExpenseResponses {
     data class ParticipantInfoResponse(
         val tripMemberId: Long,

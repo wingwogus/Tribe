@@ -11,6 +11,11 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+/**
+ * 환율 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @ConditionalOnBean(ExchangeRateGateway::class)
 class ExchangeRateService(

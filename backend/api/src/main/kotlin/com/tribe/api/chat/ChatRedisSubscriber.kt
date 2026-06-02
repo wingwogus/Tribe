@@ -9,6 +9,11 @@ import org.springframework.data.redis.connection.MessageListener
 import org.springframework.messaging.simp.SimpMessagingTemplate
 import org.springframework.stereotype.Component
 
+/**
+ * 채팅 API 계층 경계.
+ *
+ * HTTP transport와 application 계층 분리.
+ */
 @Component
 @ConditionalOnProperty(name = ["chat.redis.enabled"], havingValue = "true")
 class ChatRedisSubscriber(

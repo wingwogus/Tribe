@@ -10,6 +10,11 @@ import org.springframework.web.multipart.MultipartFile
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 지출 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object ExpenseRequests {
     data class ItemRequest(
         val itemId: Long? = null,

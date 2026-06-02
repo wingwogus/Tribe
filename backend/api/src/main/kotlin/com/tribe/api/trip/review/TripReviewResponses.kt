@@ -4,6 +4,11 @@ import com.tribe.api.itinerary.place.PlaceResponses
 import com.tribe.application.trip.review.TripReviewResult
 import java.time.LocalDateTime
 
+/**
+ * 여행 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object TripReviewResponses {
     data class RecommendedPlaceResponse(
         val placeId: Long,

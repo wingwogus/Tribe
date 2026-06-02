@@ -5,6 +5,11 @@ import com.tribe.domain.trip.member.TripMember
 import com.tribe.domain.trip.member.TripRole
 import java.time.LocalDate
 
+/**
+ * 여행 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object TripResult {
     data class Invitation(
         val inviteLink: String,

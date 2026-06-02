@@ -17,6 +17,11 @@ import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
+/**
+ * 지출 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @Transactional(readOnly = true)
 class SettlementService(

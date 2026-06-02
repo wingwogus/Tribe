@@ -5,7 +5,15 @@ import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceTypeSummary
 
+/**
+ * 장소 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object PlaceResponses {
+    /**
+     * Google type 요약 응답.
+     */
     data class PlaceTypeSummaryResponse(
         val primaryType: String?,
         val types: List<String>,
@@ -20,6 +28,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 장소 사진 참조 응답.
+     */
     data class PhotoHintResponse(
         val name: String?,
         val photoUri: String? = null,
@@ -32,6 +43,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 목록에서 쓰는 얇은 상세 요약.
+     */
     data class PlaceDetailSummaryResponse(
         val businessStatus: String?,
         val rating: Double?,
@@ -48,6 +62,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 검색/주변/resolve 공통 목록 응답.
+     */
     data class SearchResponse(
         val placeId: Long? = null,
         val externalPlaceId: String,
@@ -76,6 +93,7 @@ object PlaceResponses {
                 placeDetailSummary = result.placeDetailSummary?.let(PlaceDetailSummaryResponse::from),
             )
 
+            // 주변 검색 목록은 빠른 렌더링을 위해 사진/상세 요약 제거.
             fun fromNearby(result: PlaceResult.SearchItem) = from(
                 result.copy(
                     photoHint = null,
@@ -85,6 +103,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 내부 Place 상세 응답.
+     */
     data class DetailResponse(
         val placeId: Long,
         val externalPlaceId: String,

@@ -5,6 +5,11 @@ import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 
+/**
+ * 인증 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object AuthRequests {
     data class SendVerificationCodeRequest(
         @field:NotBlank(message = "이메일을 입력해주세요")

@@ -2,6 +2,11 @@ package com.tribe.api.chat
 
 import com.tribe.application.chat.ChatMessageResult
 
+/**
+ * 채팅 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object ChatMessageResponses {
     data class MessageResponse(
         val messageId: Long,

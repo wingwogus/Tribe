@@ -23,6 +23,11 @@ import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
+/**
+ * 여행 위시리스트 use case.
+ *
+ * 여행 멤버가 공유하는 장소 후보 저장과 realtime 전파 흐름.
+ */
 @Service
 @Transactional
 class WishlistService(
@@ -38,6 +43,7 @@ class WishlistService(
     private val tripAuthorizationPolicy: TripAuthorizationPolicy,
 ) {
     fun addWishList(command: WishlistCommand.Add): WishlistResult.Item {
+        // 검색 후보 payload로 들어온 장소를 canonical Place로 확정 후 여행 위시에 저장.
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
@@ -47,6 +53,7 @@ class WishlistService(
 
         ensurePlaceNotInWishList(command.tripId, command.externalPlaceId)
 
+        // 검색 후보의 외부 placeId를 내부 Place로 저장/보강.
         val place = placeCatalogService.getOrCreateAndEnrich(
             externalPlaceId = command.externalPlaceId,
             placeName = command.placeName,
@@ -59,6 +66,7 @@ class WishlistService(
     }
 
     fun addWishListFromMemberWishlist(command: WishlistCommand.AddFromMemberWishlist): WishlistResult.Item {
+        // 개인 위시리스트 항목을 여행 공유 위시리스트로 복사.
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
@@ -75,6 +83,7 @@ class WishlistService(
     }
 
     fun addWishListFromPlace(command: WishlistCommand.AddFromPlace): WishlistResult.Item {
+        // 이미 내부 Place가 있는 경우 외부 payload 없이 여행 위시리스트에 연결.
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
@@ -89,6 +98,7 @@ class WishlistService(
     }
 
     private fun ensurePlaceNotInWishList(tripId: Long, externalPlaceId: String) {
+        // 여행 위시리스트는 같은 Google placeId 중복 저장 차단.
         if (wishlistItemRepository.existsByTrip_IdAndPlace_ExternalPlaceId(tripId, externalPlaceId)) {
             throw BusinessException(ErrorCode.WISHLIST_ITEM_ALREADY_EXISTS)
         }
@@ -101,6 +111,7 @@ class WishlistService(
         place: Place,
         actorId: Long,
     ): WishlistResult.Item {
+        // 저장 주체는 TripMember로 남겨 협업 화면에서 추가자 표시 가능.
         val saved = wishlistItemRepository.save(
             WishlistItem(
                 trip = trip,
@@ -109,6 +120,7 @@ class WishlistService(
             )
         )
         val result = WishlistResult.Item.from(saved)
+        // 공유 위시리스트 변경은 같은 trip 구독자에게 realtime 전파.
         tripRealtimeEventPublisher.publish(
             TripRealtimeEvent(
                 type = TripRealtimeEventType.WISHLIST,
@@ -149,6 +161,7 @@ class WishlistService(
     }
 
     fun deleteWishlistItems(command: WishlistCommand.Delete) {
+        // bulk 삭제는 요청 ID 중복 제거 후 missing ID를 먼저 검증.
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val ids = command.wishlistItemIds.distinct()
         if (ids.isEmpty()) return
@@ -156,6 +169,7 @@ class WishlistService(
         val missing = ids.filterNot { it in existingIds }
         if (missing.isNotEmpty()) throw BusinessException(ErrorCode.WISHLIST_ITEM_NOT_FOUND)
         wishlistItemRepository.deleteAllByIdInBatch(existingIds)
+        // 삭제 이벤트는 제거된 ID 목록만 전달해 클라이언트 캐시 갱신 단순화.
         tripRealtimeEventPublisher.publish(
             TripRealtimeEvent(
                 type = TripRealtimeEventType.WISHLIST,

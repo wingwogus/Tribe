@@ -4,6 +4,11 @@ import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.core.user.OAuth2User
 
+/**
+ * 보안 application 계층 경계.
+ *
+ * 도메인 조작과 외부 adapter 의존성 분리.
+ */
 class OAuth2MemberPrincipal(
     val memberId: Long,
     val role: String,

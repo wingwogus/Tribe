@@ -7,6 +7,11 @@ import com.tribe.application.itinerary.place.PlaceTypeSummary
 import com.tribe.domain.itinerary.item.ItineraryItem
 import java.time.LocalDateTime
 
+/**
+ * 일정 아이템 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object ItemResult {
     data class PhotoHint(
         val name: String?,

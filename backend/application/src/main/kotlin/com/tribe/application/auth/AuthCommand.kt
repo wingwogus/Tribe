@@ -1,5 +1,10 @@
 package com.tribe.application.auth
 
+/**
+ * 인증 command 모델 경계.
+ *
+ * controller 입력을 use case 의도로 정규화.
+ */
 object AuthCommand {
     data class SendVerificationCode(
         val email: String

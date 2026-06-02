@@ -12,6 +12,11 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import java.time.LocalDateTime
 
+/**
+ * 채팅 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class ChatMessage(
     @ManyToOne(fetch = FetchType.LAZY)

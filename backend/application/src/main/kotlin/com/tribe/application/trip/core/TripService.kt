@@ -38,6 +38,11 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.Base64
 
+/**
+ * 여행 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @Transactional
 class TripService(

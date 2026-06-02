@@ -8,6 +8,11 @@ import org.springframework.core.ParameterizedTypeReference
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 
+/**
+ * 환율 batch 외부 client 경계.
+ *
+ * 원격 payload를 application processor 입력으로 변환.
+ */
 @Component
 class ExchangeRateHttpClient(
     restClientBuilder: RestClient.Builder,

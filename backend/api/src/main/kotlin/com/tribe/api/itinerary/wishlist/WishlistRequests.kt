@@ -10,6 +10,11 @@ import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
+/**
+ * 위시리스트 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object WishlistRequests {
     data class WishlistAddRequest(
         @field:NotBlank(message = "외부 장소 ID는 필수입니다.")

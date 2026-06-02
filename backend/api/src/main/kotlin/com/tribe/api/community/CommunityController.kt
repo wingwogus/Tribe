@@ -19,6 +19,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
 
+/**
+ * 커뮤니티 HTTP 진입점.
+ *
+ * transport DTO와 application use case 연결 경계.
+ */
 @Validated
 @RestController
 @RequestMapping("/api/v1/community/posts")

@@ -5,6 +5,11 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Repository
 import java.time.Duration
 
+/**
+ * Redis 저장소 application 저장소 port 경계.
+ *
+ * Redis/외부 저장소 접근 의도를 use case 언어로 분리.
+ */
 @Repository
 @ConditionalOnProperty(name = ["tribe.auth.enabled"], havingValue = "true", matchIfMissing = true)
 class EmailVerificationRedisRepository(

@@ -2,6 +2,11 @@ package com.tribe.api.trip.core
 
 import com.tribe.application.trip.core.TripResult
 
+/**
+ * 여행 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object TripResponses {
     data class InvitationResponse(
         val inviteLink: String,

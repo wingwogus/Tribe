@@ -6,6 +6,11 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import java.time.LocalDate
 
+/**
+ * 여행 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object TripRequests {
     data class CreateRequest(
         @field:NotBlank(message = "여행 제목은 필수입니다.")

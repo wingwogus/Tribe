@@ -6,6 +6,11 @@ import com.tribe.domain.chat.QChatMessage.chatMessage
 import com.tribe.domain.member.QMember.member
 import com.tribe.domain.trip.member.QTripMember.tripMember
 
+/**
+ * 채팅 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 class ChatMessageRepositoryImpl(
     private val queryFactory: JPAQueryFactory,
 ) : ChatMessageRepositoryCustom {

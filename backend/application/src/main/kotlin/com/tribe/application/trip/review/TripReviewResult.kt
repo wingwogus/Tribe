@@ -7,6 +7,11 @@ import com.tribe.application.itinerary.place.NormalizedPlaceCategoryKey
 import com.tribe.domain.trip.review.TripReview
 import java.time.LocalDateTime
 
+/**
+ * 여행 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object TripReviewResult {
     data class PhotoHint(
         val name: String?,

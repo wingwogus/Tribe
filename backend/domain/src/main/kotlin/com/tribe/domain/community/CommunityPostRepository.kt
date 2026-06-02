@@ -7,6 +7,11 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
+/**
+ * 커뮤니티 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface CommunityPostRepository : JpaRepository<CommunityPost, Long>, CommunityPostRepositoryCustom {
     @Query(
         value = "select cp from CommunityPost cp join fetch cp.author join fetch cp.trip where cp.trip.country = :country",

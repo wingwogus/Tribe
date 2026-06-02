@@ -3,6 +3,11 @@ package com.tribe.application.expense
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+/**
+ * 지출 application 계층 경계.
+ *
+ * 도메인 조작과 외부 adapter 의존성 분리.
+ */
 object ExpenseCalculator {
     fun calculateFairShare(total: BigDecimal, participantCount: Int): List<BigDecimal> {
         if (participantCount <= 0) return emptyList()

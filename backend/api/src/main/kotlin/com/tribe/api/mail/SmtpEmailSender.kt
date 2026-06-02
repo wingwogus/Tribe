@@ -9,6 +9,11 @@ import org.springframework.mail.javamail.MimeMessageHelper
 import org.springframework.stereotype.Component
 import kotlin.text.trimIndent
 
+/**
+ * 메일 외부 adapter 경계.
+ *
+ * 외부 SDK/API 응답을 application port shape로 변환.
+ */
 @Component
 class SmtpEmailSender(
     private val mailSender: JavaMailSender,
