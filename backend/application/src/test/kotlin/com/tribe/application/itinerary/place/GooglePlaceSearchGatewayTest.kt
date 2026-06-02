@@ -2,12 +2,19 @@ package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpStatus
+import org.springframework.web.reactive.function.client.ClientResponse
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Mono
+import java.util.concurrent.atomic.AtomicInteger
 
 class GooglePlaceSearchGatewayTest {
     private val objectMapper = ObjectMapper()
@@ -140,6 +147,55 @@ class GooglePlaceSearchGatewayTest {
 
             assertTrue(payload.regularOpeningPeriods.isEmpty(), json)
         }
+    }
+
+    @Test
+    fun `getPlaceDetails retries transient server failure once before mapping external error`() {
+        val attempts = AtomicInteger()
+        val failingGateway = GooglePlaceSearchGateway(
+            webClientBuilder = WebClient.builder().exchangeFunction {
+                attempts.incrementAndGet()
+                Mono.just(ClientResponse.create(HttpStatus.INTERNAL_SERVER_ERROR).build())
+            },
+            objectMapper = objectMapper,
+            apiKey = "test-key",
+        )
+
+        val exception = assertThrows(BusinessException::class.java) {
+            failingGateway.getPlaceDetails("place-1", "ko")
+        }
+
+        assertEquals(2, attempts.get())
+        assertEquals(ErrorCode.EXTERNAL_API_ERROR, exception.errorCode)
+        val detail = exception.detail as Map<*, *>
+        assertEquals("google_place_details", detail["operation"])
+        assertEquals("place-1", detail["externalPlaceId"])
+        assertEquals(500, detail["status"])
+        assertEquals("http_status", detail["cause"])
+        assertEquals(true, detail["retryable"])
+    }
+
+    @Test
+    fun `getPlaceDetails maps client failure without retrying`() {
+        val attempts = AtomicInteger()
+        val failingGateway = GooglePlaceSearchGateway(
+            webClientBuilder = WebClient.builder().exchangeFunction {
+                attempts.incrementAndGet()
+                Mono.just(ClientResponse.create(HttpStatus.FORBIDDEN).build())
+            },
+            objectMapper = objectMapper,
+            apiKey = "test-key",
+        )
+
+        val exception = assertThrows(BusinessException::class.java) {
+            failingGateway.getPlaceDetails("place-1", "ko")
+        }
+
+        assertEquals(1, attempts.get())
+        assertEquals(ErrorCode.EXTERNAL_API_ERROR, exception.errorCode)
+        val detail = exception.detail as Map<*, *>
+        assertEquals(403, detail["status"])
+        assertEquals(false, detail["retryable"])
     }
 
     private fun detailsResponse(

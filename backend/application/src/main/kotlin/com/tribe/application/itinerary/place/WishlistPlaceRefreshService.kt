@@ -1,5 +1,7 @@
 package com.tribe.application.itinerary.place
 
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceRepository
 import org.slf4j.LoggerFactory
@@ -168,10 +170,14 @@ class WishlistPlaceRefreshService(
 
     private fun Exception.isRetryableRefreshFailure(): Boolean =
         when (this) {
+            is BusinessException -> errorCode == ErrorCode.EXTERNAL_API_ERROR && detail.retryableFlag()
             is WebClientResponseException -> statusCode.value() == 429 || statusCode.is5xxServerError
             is WebClientRequestException -> true
             else -> false
         }
+
+    private fun Any?.retryableFlag(): Boolean =
+        (this as? Map<*, *>)?.get("retryable") == true
 
     private fun throttleGoogleCall(
         callIndex: Int,

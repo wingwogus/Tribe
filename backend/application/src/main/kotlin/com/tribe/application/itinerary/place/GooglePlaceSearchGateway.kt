@@ -10,9 +10,13 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
+import java.util.concurrent.TimeoutException
+import reactor.util.retry.Retry
 
 @Component
 @ConditionalOnProperty(name = ["tribe.itinerary.place-search.enabled"], havingValue = "true", matchIfMissing = true)
@@ -23,6 +27,8 @@ class GooglePlaceSearchGateway(
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        private val DETAILS_TIMEOUT = Duration.ofSeconds(5)
+        private val DETAILS_RETRY_BACKOFF = Duration.ofMillis(200)
         internal const val SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.businessStatus,places.utcOffsetMinutes,places.rating,places.userRatingCount,places.currentOpeningHours,places.editorialSummary"
         internal const val DETAILS_FIELD_MASK =
@@ -90,12 +96,73 @@ class GooglePlaceSearchGateway(
             )
             .retrieve()
             .bodyToMono(PlaceDetailsResponse::class.java)
-            .doOnError { logger.error("Error calling Google Place Details API", it) }
+            .timeout(DETAILS_TIMEOUT)
+            .retryWhen(
+                Retry.backoff(1, DETAILS_RETRY_BACKOFF)
+                    .filter(::isTransientDetailsFailure)
+                    .onRetryExhaustedThrow { _, signal -> signal.failure() },
+            )
+            .doOnError { ex ->
+                if (isGoogleDetailsFailure(ex)) {
+                    logger.warn(
+                        "Google Place Details failed: externalPlaceId={}, status={}, retryable={}, cause={}",
+                        externalPlaceId,
+                        googleStatus(ex),
+                        isTransientDetailsFailure(ex),
+                        googleFailureCause(ex),
+                    )
+                }
+            }
+            .onErrorMap { ex ->
+                if (isGoogleDetailsFailure(ex)) {
+                    externalApiException(externalPlaceId, ex)
+                } else {
+                    ex
+                }
+            }
             .block()
             ?: return null
 
         return toDetailsPayload(response)
     }
+
+    private fun isTransientDetailsFailure(ex: Throwable): Boolean =
+        when (ex) {
+            is WebClientRequestException,
+            is TimeoutException,
+            -> true
+            is WebClientResponseException -> ex.statusCode.value() == 429 || ex.statusCode.is5xxServerError
+            else -> false
+        }
+
+    private fun isGoogleDetailsFailure(ex: Throwable): Boolean =
+        ex is WebClientRequestException || ex is TimeoutException || ex is WebClientResponseException
+
+    private fun externalApiException(externalPlaceId: String, ex: Throwable): BusinessException {
+        val detail = linkedMapOf<String, Any>(
+            "operation" to "google_place_details",
+            "externalPlaceId" to externalPlaceId,
+        )
+        googleStatus(ex)?.let { detail["status"] = it }
+        detail["cause"] = googleFailureCause(ex)
+        detail["retryable"] = isTransientDetailsFailure(ex)
+
+        return BusinessException(
+            ErrorCode.EXTERNAL_API_ERROR,
+            detail = detail,
+        )
+    }
+
+    private fun googleStatus(ex: Throwable): Int? =
+        (ex as? WebClientResponseException)?.statusCode?.value()
+
+    private fun googleFailureCause(ex: Throwable): String =
+        when (ex) {
+            is WebClientResponseException -> "http_status"
+            is WebClientRequestException -> "request"
+            is TimeoutException -> "timeout"
+            else -> "unknown"
+        }
 
     internal fun toDetailsPayload(response: PlaceDetailsResponse): PlaceSearchGateway.DetailsPayload {
         val regularOpeningHoursJson = response.regularOpeningHours?.let { objectMapper.writeValueAsString(it) }

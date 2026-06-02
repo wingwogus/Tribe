@@ -1,12 +1,15 @@
 package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshot
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshotRepository
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriod
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriodRepository
 import com.tribe.domain.itinerary.place.PlaceRepository
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -27,6 +30,8 @@ class PlaceCatalogService(
     private val placeSearchGateway: PlaceSearchGateway,
     private val transactionManager: PlatformTransactionManager,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun findExistingPlaces(results: List<PlaceSearchGateway.SearchHit>): Map<String, Place> {
         if (results.isEmpty()) return emptyMap()
         return placeRepository.findByExternalPlaceIdIn(results.map { it.externalPlaceId }).associateBy { it.externalPlaceId }
@@ -49,7 +54,17 @@ class PlaceCatalogService(
                 longitude = longitude,
             ).let(::findManagedPlace)
 
-        return enrichDetailsIfNeeded(place, language)
+        return try {
+            enrichDetailsIfNeeded(place, language)
+        } catch (ex: BusinessException) {
+            if (ex.errorCode != ErrorCode.EXTERNAL_API_ERROR) throw ex
+            log.warn(
+                "Skipping Google place detail enrichment: externalPlaceId={}, placeId={}",
+                place.externalPlaceId,
+                place.id,
+            )
+            place
+        }
     }
 
     fun mergeWithCanonical(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {

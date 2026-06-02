@@ -96,6 +96,32 @@ Validation errors currently expose the first field error as:
 
 Keep this shape predictable if more validation details are added.
 
+## External API Detail Shape
+
+`COMMON_011` may include provider-operation metadata when the server can safely
+describe an upstream failure:
+
+```json
+{
+  "operation": "google_place_details",
+  "externalPlaceId": "provider-place-id",
+  "status": 502,
+  "cause": "http_status",
+  "retryable": true
+}
+```
+
+Allowed fields are:
+
+- `operation`: stable internal operation name.
+- `externalPlaceId`: non-secret provider resource id already used by the API.
+- `status`: upstream HTTP status when available.
+- `cause`: controlled category such as `http_status`, `request`, or `timeout`.
+- `retryable`: boolean retry hint for backend jobs.
+
+Do not expose provider response bodies, credentials, tokens, stack traces, raw
+exception messages, or private user data in this detail object.
+
 ## Harness Requirement
 
 When an error shape or code changes:

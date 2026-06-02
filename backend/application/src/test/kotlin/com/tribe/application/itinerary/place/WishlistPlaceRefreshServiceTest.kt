@@ -1,5 +1,7 @@
 package com.tribe.application.itinerary.place
 
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshot
 import com.tribe.domain.itinerary.place.PlaceRepository
@@ -73,6 +75,69 @@ class WishlistPlaceRefreshServiceTest {
         assertEquals(1, summary.retries)
         assertEquals(listOf(25L, 500L), sleeper.sleeps)
         verify(exactly = 2) { placeCatalogService.refreshDetailsById(stale.id, "ko") }
+    }
+
+    @Test
+    fun `refreshActiveWishlistPlaces retries normalized retryable external failures`() {
+        val stale = place("normalized-retry", syncedAt = LocalDateTime.now().minusDays(40))
+        stubRefreshCandidates(batchSize = 1, places = listOf(stale))
+        every { placeCatalogService.refreshDetailsById(stale.id, "ko") } throws
+            externalApiException(retryable = true) andThen true
+
+        val summary = service.refreshActiveWishlistPlaces(
+            WishlistPlaceRefreshRequest(
+                batchSize = 1,
+                rateLimitPerMinute = 120,
+                maxAttempts = 2,
+                retryBackoffMillis = 25,
+            ),
+        )
+
+        assertEquals(1, summary.succeeded)
+        assertEquals(0, summary.failed)
+        assertEquals(1, summary.retries)
+        assertEquals(listOf(25L, 500L), sleeper.sleeps)
+        verify(exactly = 2) { placeCatalogService.refreshDetailsById(stale.id, "ko") }
+    }
+
+    @Test
+    fun `refreshActiveWishlistPlaces does not retry normalized non retryable external failures`() {
+        val stale = place("normalized-fail", syncedAt = LocalDateTime.now().minusDays(40))
+        val failure = externalApiException(retryable = false)
+        stubRefreshCandidates(batchSize = 1, places = listOf(stale))
+        every { placeCatalogService.refreshDetailsById(stale.id, "ko") } throws failure
+
+        val summary = service.refreshActiveWishlistPlaces(
+            WishlistPlaceRefreshRequest(batchSize = 1, maxAttempts = 3, retryBackoffMillis = 10),
+        )
+
+        assertEquals(0, summary.succeeded)
+        assertEquals(1, summary.failed)
+        assertEquals(0, summary.retries)
+        assertEquals(mapOf((failure::class.simpleName ?: "exception") to 1), summary.failureReasons)
+        assertEquals(emptyList<Long>(), sleeper.sleeps)
+        verify(exactly = 1) { placeCatalogService.refreshDetailsById(stale.id, "ko") }
+    }
+
+    @Test
+    fun `refreshActiveWishlistPlaces does not retry normalized external failures with malformed retry metadata`() {
+        val stale = place("normalized-malformed", syncedAt = LocalDateTime.now().minusDays(40))
+        val failure = BusinessException(
+            ErrorCode.EXTERNAL_API_ERROR,
+            detail = mapOf("retryable" to "true"),
+        )
+        stubRefreshCandidates(batchSize = 1, places = listOf(stale))
+        every { placeCatalogService.refreshDetailsById(stale.id, "ko") } throws failure
+
+        val summary = service.refreshActiveWishlistPlaces(
+            WishlistPlaceRefreshRequest(batchSize = 1, maxAttempts = 3, retryBackoffMillis = 10),
+        )
+
+        assertEquals(0, summary.succeeded)
+        assertEquals(1, summary.failed)
+        assertEquals(0, summary.retries)
+        assertEquals(emptyList<Long>(), sleeper.sleeps)
+        verify(exactly = 1) { placeCatalogService.refreshDetailsById(stale.id, "ko") }
     }
 
     @Test
@@ -151,6 +216,16 @@ class WishlistPlaceRefreshServiceTest {
             HttpHeaders.EMPTY,
             ByteArray(0),
             null as Charset?,
+        )
+
+    private fun externalApiException(retryable: Boolean): BusinessException =
+        BusinessException(
+            ErrorCode.EXTERNAL_API_ERROR,
+            detail = mapOf(
+                "operation" to "google_place_details",
+                "externalPlaceId" to "place-id",
+                "retryable" to retryable,
+            ),
         )
 
     private fun place(

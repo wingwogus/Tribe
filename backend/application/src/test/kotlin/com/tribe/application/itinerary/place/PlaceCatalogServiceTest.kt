@@ -1,6 +1,8 @@
 package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshot
 import com.tribe.domain.itinerary.place.PlaceDetailSnapshotRepository
@@ -9,6 +11,7 @@ import com.tribe.domain.itinerary.place.PlaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -190,6 +193,43 @@ class PlaceCatalogServiceTest {
         verify(placeSearchGateway).getPlaceDetails("place-1", "ko")
         assertNotNull(place.detailSnapshot?.openingHoursSyncedAt)
         assertNotNull(place.detailSnapshot?.currentOpeningHoursSyncedAt)
+    }
+
+    @Test
+    fun `getOrCreateAndEnrich returns minimal place when detail enrichment fails externally`() {
+        val place = Place("place-fail", "Tokyo Tower", "Tokyo", BigDecimal.ONE, BigDecimal.TEN)
+        ReflectionTestUtils.setField(place, "id", 10L)
+
+        `when`(placeRepository.findByExternalPlaceId("place-fail")).thenReturn(place)
+        `when`(placeSearchGateway.getPlaceDetails("place-fail", "ko"))
+            .thenThrow(BusinessException(ErrorCode.EXTERNAL_API_ERROR))
+
+        val result = service.getOrCreateAndEnrich(
+            externalPlaceId = "place-fail",
+            placeName = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = BigDecimal.ONE,
+            longitude = BigDecimal.TEN,
+        )
+
+        assertSame(place, result)
+        verifyNoInteractions(detailSnapshotRepository, openingPeriodRepository)
+    }
+
+    @Test
+    fun `enrichDetailsIfNeeded propagates external detail failure for strict callers`() {
+        val place = Place("place-strict", "Tokyo Tower", "Tokyo", BigDecimal.ONE, BigDecimal.TEN)
+        ReflectionTestUtils.setField(place, "id", 10L)
+
+        `when`(placeSearchGateway.getPlaceDetails("place-strict", "ko"))
+            .thenThrow(BusinessException(ErrorCode.EXTERNAL_API_ERROR))
+
+        val exception = assertThrows(BusinessException::class.java) {
+            service.enrichDetailsIfNeeded(place, "ko")
+        }
+
+        assertEquals(ErrorCode.EXTERNAL_API_ERROR, exception.errorCode)
+        verifyNoInteractions(detailSnapshotRepository, openingPeriodRepository)
     }
 
     @Test
