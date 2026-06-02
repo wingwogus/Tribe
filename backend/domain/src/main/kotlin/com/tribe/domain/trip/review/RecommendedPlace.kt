@@ -10,6 +10,11 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Column
 
+/**
+ * 여행 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class RecommendedPlace(
     @ManyToOne(fetch = FetchType.LAZY)

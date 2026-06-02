@@ -10,6 +10,11 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer
 
+/**
+ * 설정 API 설정 경계.
+ *
+ * Spring wiring과 runtime 옵션 연결.
+ */
 @Configuration
 @EnableWebSocketMessageBroker
 class WebSocketConfig(

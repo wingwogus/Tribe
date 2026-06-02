@@ -3,6 +3,11 @@ package com.tribe.domain.exchange
 import java.io.Serializable
 import java.time.LocalDate
 
+/**
+ * 환율 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 class CurrencyId(
     var curUnit: String = "",
     var date: LocalDate = LocalDate.MIN,

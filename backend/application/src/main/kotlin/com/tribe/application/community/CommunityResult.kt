@@ -2,6 +2,11 @@ package com.tribe.application.community
 
 import java.time.LocalDateTime
 
+/**
+ * 커뮤니티 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object CommunityResult {
     data class PostSummary(
         val id: Long,

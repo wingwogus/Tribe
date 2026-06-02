@@ -60,6 +60,7 @@ Trip:
 - `TRIP_005`: already joined trip
 - `TRIP_006`: banned member
 - `TRIP_007`: trip review not found
+- `TRIP_008`: trip date range shrink requires confirmed itinerary item deletion
 
 Community:
 
@@ -121,6 +122,26 @@ Allowed fields are:
 
 Do not expose provider response bodies, credentials, tokens, stack traces, raw
 exception messages, or private user data in this detail object.
+
+## Trip Date Shrink Conflict Detail
+
+`PATCH /api/v1/trips/{tripId}` returns `TRIP_008` with HTTP 409 when the requested date range would remove days that still contain itinerary items and `deleteOutOfRangeItems` is omitted or false.
+
+```json
+{
+  "outOfRangeItemCount": 1,
+  "newTotalDays": 2,
+  "outOfRangeItems": [
+    {
+      "itemId": 10,
+      "visitDay": 3,
+      "title": "Dinner"
+    }
+  ]
+}
+```
+
+The frontend may retry the same update with `deleteOutOfRangeItems: true` after user confirmation. The retry must be treated as destructive: the backend updates the trip and deletes those out-of-range itinerary items in the same transaction.
 
 ## Harness Requirement
 

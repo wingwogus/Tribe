@@ -13,7 +13,7 @@ Vite 기반 React 애플리케이션이며, 백엔드 API와 WebSocket 서버는
 - Tailwind CSS
 - shadcn/ui
 - SockJS + STOMP
-- Leaflet
+- Google Maps JavaScript API
 
 ## 디렉터리 구조
 
@@ -93,6 +93,8 @@ npm run preview
 | `VITE_API_BASE_URL` | `/api/v1` | REST API base URL |
 | `VITE_BACKEND_ORIGIN` | `VITE_API_BASE_URL`에서 유도 또는 현재 origin | OAuth 로그인과 WebSocket 접속에 사용하는 origin |
 | `VITE_WS_PATH` | `/ws` | WebSocket endpoint path |
+| `VITE_GOOGLE_MAPS_API_KEY` | 없음 | Google Maps JavaScript API 브라우저 키 |
+| `VITE_GOOGLE_MAPS_MAP_ID` | 없음 | Google Cloud Map Style이 연결된 JavaScript Map ID |
 
 운영 기본값 예시는 [frontend/.env.production.example](/Users/wingwogus/Projects/Tribe/frontend/.env.production.example)에 있습니다.
 
@@ -100,6 +102,16 @@ npm run preview
 VITE_API_BASE_URL=https://api.tri-be.app/api/v1
 VITE_BACKEND_ORIGIN=https://api.tri-be.app
 ```
+
+### Google 지도 POI 표시 밀도
+
+플래너 지도는 Google 기본 POI를 클릭할 수 있도록 `clickableIcons`를 켜 둡니다. 멀리서 POI가 과하게 보이지 않게 하려면 `VITE_GOOGLE_MAPS_MAP_ID`에 연결된 Google Cloud Map Style에서 POI density/visibility를 줌 레벨별로 조정합니다.
+
+- 줌 10-12: POI를 숨기거나 낮은 밀도로 표시
+- 줌 13-15: 주요 POI만 제한적으로 표시
+- 줌 16 이상: 세부 POI를 충분히 표시
+
+`DEMO_MAP_ID`는 Cloud Styling 설정을 반영할 수 없으므로 운영/검증 환경에서는 실제 프로젝트의 Map ID를 사용해야 합니다. 이 조정은 Maps JavaScript API 로드만 사용하며 Places API 추가 호출을 만들지 않습니다.
 
 ## 인증 흐름
 

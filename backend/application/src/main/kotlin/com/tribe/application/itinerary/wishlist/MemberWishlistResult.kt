@@ -6,6 +6,11 @@ import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceTypeSummary
 import java.math.BigDecimal
 
+/**
+ * 위시리스트 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object MemberWishlistResult {
     data class PhotoHint(
         val name: String?,

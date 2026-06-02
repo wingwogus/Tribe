@@ -10,6 +10,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
 
+/**
+ * 커뮤니티 외부 adapter 경계.
+ *
+ * 외부 SDK/API 응답을 application port shape로 변환.
+ */
 @Component
 @ConditionalOnProperty(name = ["tribe.community.image.enabled"], havingValue = "true", matchIfMissing = true)
 class CloudinaryCommunityImageStorage(

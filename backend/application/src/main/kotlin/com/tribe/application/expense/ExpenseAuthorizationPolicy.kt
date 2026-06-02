@@ -9,6 +9,11 @@ import com.tribe.domain.trip.core.TripRepository
 import com.tribe.domain.trip.member.TripRole
 import org.springframework.stereotype.Component
 
+/**
+ * 지출 권한 정책 경계.
+ *
+ * use case 진입 전 멤버십과 actor 조건 검증.
+ */
 @Component
 class ExpenseAuthorizationPolicy(
     private val currentActor: CurrentActor,

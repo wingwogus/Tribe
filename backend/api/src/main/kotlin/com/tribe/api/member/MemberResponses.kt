@@ -2,6 +2,11 @@ package com.tribe.api.member
 
 import com.tribe.application.member.MemberResult
 
+/**
+ * 회원 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object MemberResponses {
     data class ProfileResponse(
         val memberId: Long,

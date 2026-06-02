@@ -1,6 +1,8 @@
 package com.tribe.api.trip.core
 
 import com.tribe.api.exception.GlobalExceptionHandler
+import com.tribe.application.exception.ErrorCode
+import com.tribe.application.exception.business.BusinessException
 import com.tribe.application.security.TokenProvider
 import com.tribe.application.trip.core.TripCommand
 import com.tribe.application.trip.core.TripResult
@@ -90,6 +92,15 @@ class TripControllerTest(
                             country = "일본",
                             regionCode = "JP_TOKYO",
                             memberCount = 2,
+                            members = listOf(
+                                TripResult.MemberSummary(
+                                    tripMemberId = 1L,
+                                    memberId = 2L,
+                                    nickname = "member",
+                                    avatar = "https://cdn.example.com/member.png",
+                                    role = "OWNER",
+                                ),
+                            ),
                         ),
                     ),
                     PageRequest.of(0, 10),
@@ -101,6 +112,7 @@ class TripControllerTest(
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data[0].country", equalTo("일본")))
             .andExpect(jsonPath("$.data[0].regionCode", equalTo("JP_TOKYO")))
+            .andExpect(jsonPath("$.data[0].members[0].avatar", equalTo("https://cdn.example.com/member.png")))
     }
 
     @Test
@@ -150,6 +162,89 @@ class TripControllerTest(
         )
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.data.regionCode", equalTo(REGION_CODE)))
+    }
+
+    @Test
+    fun `updateTrip forwards destructive confirmation flag`() {
+        `when`(
+            tripService.updateTrip(
+                TripCommand.Update(
+                    tripId = 5L,
+                    title = "Updated",
+                    startDate = LocalDate.of(2026, 4, 12),
+                    endDate = LocalDate.of(2026, 4, 13),
+                    country = "JP",
+                    regionCode = REGION_CODE,
+                    deleteOutOfRangeItems = true,
+                ),
+            ),
+        ).thenReturn(sampleTripDetail())
+
+        mockMvc.perform(
+            patch("/api/v1/trips/5")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "title": "Updated",
+                      "startDate": "2026-04-12",
+                      "endDate": "2026-04-13",
+                      "country": "JP",
+                      "regionCode": "$REGION_CODE",
+                      "deleteOutOfRangeItems": true
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+    }
+
+    @Test
+    fun `updateTrip returns conflict detail when date shrink needs item deletion`() {
+        `when`(
+            tripService.updateTrip(
+                TripCommand.Update(
+                    tripId = 5L,
+                    title = "Updated",
+                    startDate = LocalDate.of(2026, 4, 12),
+                    endDate = LocalDate.of(2026, 4, 13),
+                    country = "JP",
+                    regionCode = REGION_CODE,
+                ),
+            ),
+        ).thenThrow(
+            BusinessException(
+                errorCode = ErrorCode.TRIP_DATE_RANGE_REQUIRES_ITEM_DELETION,
+                detail = mapOf(
+                    "outOfRangeItemCount" to 1,
+                    "newTotalDays" to 2,
+                    "outOfRangeItems" to listOf(mapOf("itemId" to 10L, "visitDay" to 3, "title" to "Dinner")),
+                ),
+            ),
+        )
+
+        mockMvc.perform(
+            patch("/api/v1/trips/5")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "title": "Updated",
+                      "startDate": "2026-04-12",
+                      "endDate": "2026-04-13",
+                      "country": "JP",
+                      "regionCode": "$REGION_CODE"
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.error.code", equalTo("TRIP_008")))
+            .andExpect(jsonPath("$.error.message", equalTo("error.trip_date_range_requires_item_deletion")))
+            .andExpect(jsonPath("$.error.detail.outOfRangeItemCount", equalTo(1)))
+            .andExpect(jsonPath("$.error.detail.newTotalDays", equalTo(2)))
     }
 
     @Test
@@ -218,6 +313,7 @@ class TripControllerTest(
                 tripMemberId = 1L,
                 memberId = null,
                 nickname = "guest",
+                avatar = null,
                 role = "GUEST",
             ),
         ),

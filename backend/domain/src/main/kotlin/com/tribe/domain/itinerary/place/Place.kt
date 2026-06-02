@@ -16,8 +16,14 @@ import org.hibernate.annotations.BatchSize
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
+/**
+ * 내부 canonical 장소.
+ *
+ * Google externalPlaceId를 unique identity로 삼아 일정/위시/리뷰가 공유.
+ */
 @Entity
 class Place(
+    // Google place id, 내부 중복 저장 방지 기준.
     @Column(nullable = false, unique = true)
     val externalPlaceId: String,
     @Column(nullable = false)
@@ -31,12 +37,14 @@ class Place(
     var googlePrimaryType: String? = null,
     @Column(name = "google_types_json", columnDefinition = "TEXT")
     var googleTypesJson: String? = null,
+    // 목록/상세에서 바로 필요한 Google business 상태 요약.
     @Column(name = "business_status")
     var businessStatus: String? = null,
     @Column(name = "utc_offset_minutes")
     var utcOffsetMinutes: Int? = null,
     @Column(name = "type_summary_synced_at")
     var typeSummarySyncedAt: LocalDateTime? = null,
+    // null이면 상세 snapshot/영업시간 보강 대상.
     @Column(name = "details_synced_at")
     var detailsSyncedAt: LocalDateTime? = null,
 ) {
@@ -57,6 +65,7 @@ class Place(
     @OneToOne(mappedBy = "place", fetch = FetchType.LAZY, cascade = [CascadeType.ALL], orphanRemoval = true)
     var detailSnapshot: PlaceDetailSnapshot? = null
 
+    // Google regularOpeningHours를 계산 가능한 period 목록으로 분리 저장.
     @BatchSize(size = 100)
     @OneToMany(mappedBy = "place", fetch = FetchType.LAZY, cascade = [CascadeType.ALL], orphanRemoval = true)
     val regularOpeningPeriods: MutableList<PlaceRegularOpeningPeriod> = mutableListOf()

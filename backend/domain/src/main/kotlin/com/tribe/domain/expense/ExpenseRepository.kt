@@ -4,6 +4,11 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
+/**
+ * 지출 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface ExpenseRepository : JpaRepository<Expense, Long> {
     fun findAllByTripIdOrderBySpentAtDescIdDesc(tripId: Long): List<Expense>
 

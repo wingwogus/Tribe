@@ -14,6 +14,11 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 
+/**
+ * 회원 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class TripMember(
     @ManyToOne(fetch = FetchType.LAZY)

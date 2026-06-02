@@ -87,6 +87,7 @@ interface BackendAdder {
   tripMemberId: number;
   memberId: number | null;
   nickname: string;
+  avatar?: string | null;
 }
 
 interface BackendWishlistItem {
@@ -139,7 +140,7 @@ const toWishlistItem = (item: BackendWishlistItem): WishlistItem => ({
     tripMemberId: item.adder.tripMemberId,
     memberId: item.adder.memberId,
     nickname: item.adder.nickname,
-    avatar: null,
+    avatar: item.adder.avatar ?? null,
     role: "MEMBER",
   },
   likeCount: item.likeCount ?? 0,
@@ -177,6 +178,14 @@ export const wishlistApi = {
     const response = await authenticatedAxios.post<ApiResponse<BackendWishlistItem>>(
       `/trips/${tripId}/wishlists/from-member-wishlist`,
       { memberWishlistItemId },
+    );
+    return toWishlistItem(response.data.data as BackendWishlistItem);
+  },
+
+  addWishlistFromPlace: async (tripId: number, placeId: number): Promise<WishlistItem> => {
+    const response = await authenticatedAxios.post<ApiResponse<BackendWishlistItem>>(
+      `/trips/${tripId}/wishlists/from-place`,
+      { placeId },
     );
     return toWishlistItem(response.data.data as BackendWishlistItem);
   },

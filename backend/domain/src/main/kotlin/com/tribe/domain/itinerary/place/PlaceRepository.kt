@@ -6,6 +6,11 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
 
+/**
+ * 장소 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface PlaceRepository : JpaRepository<Place, Long> {
     fun findByExternalPlaceId(externalPlaceId: String): Place?
     fun findByExternalPlaceIdIn(externalPlaceIds: Collection<String>): List<Place>

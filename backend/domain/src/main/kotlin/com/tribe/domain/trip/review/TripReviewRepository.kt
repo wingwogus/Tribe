@@ -5,6 +5,11 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 
+/**
+ * 여행 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface TripReviewRepository : JpaRepository<TripReview, Long> {
     fun findTripReviewsByTripId(tripId: Long, pageable: Pageable): Page<TripReview>
 

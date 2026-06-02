@@ -9,6 +9,11 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.support.PageableExecutionUtils
 
+/**
+ * 커뮤니티 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 class CommunityPostRepositoryImpl(
     private val queryFactory: JPAQueryFactory,
 ) : CommunityPostRepositoryCustom {

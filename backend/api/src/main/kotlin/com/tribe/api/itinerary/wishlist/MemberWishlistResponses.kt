@@ -4,6 +4,11 @@ import com.tribe.api.itinerary.place.PlaceResponses
 import com.tribe.application.itinerary.wishlist.MemberWishlistResult
 import java.math.BigDecimal
 
+/**
+ * 위시리스트 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object MemberWishlistResponses {
     data class MemberWishlistItemResponse(
         val memberWishlistItemId: Long,

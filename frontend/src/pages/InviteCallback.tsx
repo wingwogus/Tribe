@@ -6,6 +6,26 @@ import { Button } from "@/components/ui/button";
 import { tripApi } from "@/api/trips";
 import { useToast } from "@/hooks/use-toast";
 
+const getInviteJoinErrorMessage = (error: unknown) => {
+  const status = typeof error === "object" && error !== null && "response" in error
+    ? (error as { response?: { status?: number } }).response?.status
+    : undefined;
+
+  if (status === 401) {
+    return "로그인이 필요합니다.";
+  }
+
+  if (status === 404) {
+    return "유효하지 않은 초대 링크입니다.";
+  }
+
+  if (status === 400) {
+    return "이미 참여한 여행이거나 만료된 초대 링크입니다.";
+  }
+
+  return "여행 참여에 실패했습니다. 다시 시도해주세요.";
+};
+
 const InviteCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -23,45 +43,45 @@ const InviteCallback = () => {
       return;
     }
 
-    handleJoinTrip(token);
-  }, [searchParams]);
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const handleJoinTrip = async (token: string) => {
-    try {
-      const joinedTrip = await tripApi.joinTrip(token);
-      setTripTitle(joinedTrip.title);
-      setStatus('success');
-      
-      toast({
-        title: "여행 참여 완료",
-        description: `${joinedTrip.title} 여행에 참여했습니다.`,
-      });
+    const joinTrip = async () => {
+      try {
+        const joinedTrip = await tripApi.joinTrip(token);
+        setTripTitle(joinedTrip.title);
+        setStatus('success');
 
-      // 3초 후 여행 페이지로 이동
-      setTimeout(() => {
-        navigate(`/trip/${joinedTrip.tripId}`);
-      }, 3000);
-    } catch (error: any) {
-      console.error('Failed to join trip:', error);
-      setStatus('error');
-      
-      if (error.response?.status === 401) {
-        setErrorMessage('로그인이 필요합니다.');
-      } else if (error.response?.status === 404) {
-        setErrorMessage('유효하지 않은 초대 링크입니다.');
-      } else if (error.response?.status === 400) {
-        setErrorMessage('이미 참여한 여행이거나 만료된 초대 링크입니다.');
-      } else {
-        setErrorMessage('여행 참여에 실패했습니다. 다시 시도해주세요.');
+        toast({
+          title: "여행 참여 완료",
+          description: `${joinedTrip.title} 여행에 참여했습니다.`,
+        });
+
+        // 3초 후 여행 페이지로 이동
+        redirectTimer = setTimeout(() => {
+          navigate(`/trip/${joinedTrip.tripId}`);
+        }, 3000);
+      } catch (error) {
+        console.error('Failed to join trip:', error);
+        const message = getInviteJoinErrorMessage(error);
+        setStatus('error');
+        setErrorMessage(message);
+
+        toast({
+          title: "오류",
+          description: message,
+          variant: "destructive",
+        });
       }
+    };
 
-      toast({
-        title: "오류",
-        description: errorMessage || "여행 참여에 실패했습니다.",
-        variant: "destructive",
-      });
-    }
-  };
+    void joinTrip();
+
+    return () => {
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+      }
+    };
+  }, [navigate, searchParams, toast]);
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex items-center justify-center p-6">

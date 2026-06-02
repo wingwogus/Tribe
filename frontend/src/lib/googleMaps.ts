@@ -39,6 +39,24 @@ export const getGoogleMapsSearchUrl = (placeName: string): string => {
 };
 
 /**
+ * Generate Google Maps URL for a known Google place id.
+ */
+export const getGoogleMapsPlaceUrl = (
+  placeId: string,
+  latitude: number,
+  longitude: number,
+): string => {
+  const baseUrl = 'https://www.google.com/maps/search/';
+  const params = new URLSearchParams({
+    api: '1',
+    query: `${latitude},${longitude}`,
+    query_place_id: placeId,
+  });
+
+  return `${baseUrl}?${params.toString()}`;
+};
+
+/**
  * Open Google Maps link in a new tab
  */
 export const openGoogleMaps = (url: string) => {

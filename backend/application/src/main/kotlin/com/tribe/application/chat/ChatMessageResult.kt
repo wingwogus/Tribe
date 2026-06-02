@@ -6,6 +6,11 @@ import com.tribe.application.chat.event.ChatEventType
 import com.tribe.application.chat.event.ChatMessageEvent
 import com.tribe.domain.chat.ChatMessage
 
+/**
+ * 채팅 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object ChatMessageResult {
     data class Sender(
         val tripMemberId: Long,

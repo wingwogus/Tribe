@@ -20,6 +20,11 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
+/**
+ * 인증 HTTP 진입점.
+ *
+ * transport DTO와 application use case 연결 경계.
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 class AuthController(

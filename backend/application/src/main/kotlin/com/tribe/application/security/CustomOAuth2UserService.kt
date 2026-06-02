@@ -13,6 +13,11 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
+/**
+ * 보안 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @ConditionalOnProperty(name = ["tribe.auth.enabled"], havingValue = "true", matchIfMissing = true)
 class CustomOAuth2UserService(

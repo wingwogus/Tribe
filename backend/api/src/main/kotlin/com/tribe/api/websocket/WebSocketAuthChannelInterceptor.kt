@@ -8,6 +8,11 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor
 import org.springframework.messaging.support.ChannelInterceptor
 import org.springframework.messaging.support.MessageHeaderAccessor
 
+/**
+ * WebSocket framework callback 경계.
+ *
+ * Spring 실행 흐름과 Tribe 오류/인증 규칙 연결.
+ */
 class WebSocketAuthChannelInterceptor(
     private val tokenProvider: TokenProvider,
 ) : ChannelInterceptor {

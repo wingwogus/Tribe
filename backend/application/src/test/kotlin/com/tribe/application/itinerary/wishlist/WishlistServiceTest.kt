@@ -9,6 +9,7 @@ import com.tribe.application.trip.event.TripRealtimeEventPublisher
 import com.tribe.application.trip.event.TripRealtimeEventType
 import com.tribe.application.trip.event.WishlistAction
 import com.tribe.domain.itinerary.place.Place
+import com.tribe.domain.itinerary.place.PlaceRepository
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItem
 import com.tribe.domain.itinerary.wishlist.MemberWishlistItemRepository
 import com.tribe.domain.itinerary.wishlist.TripWishlistSort
@@ -53,6 +54,7 @@ class WishlistServiceTest {
     @Mock private lateinit var memberWishlistItemRepository: MemberWishlistItemRepository
     @Mock private lateinit var wishlistItemLikeRepository: WishlistItemLikeRepository
     @Mock private lateinit var placeCatalogService: PlaceCatalogService
+    @Mock private lateinit var placeRepository: PlaceRepository
     @Mock private lateinit var tripMemberRepository: TripMemberRepository
     @Mock private lateinit var tripRepository: TripRepository
     @Mock private lateinit var memberRepository: MemberRepository
@@ -70,6 +72,7 @@ class WishlistServiceTest {
             memberWishlistItemRepository = memberWishlistItemRepository,
             wishlistItemLikeRepository = wishlistItemLikeRepository,
             placeCatalogService = placeCatalogService,
+            placeRepository = placeRepository,
             tripMemberRepository = tripMemberRepository,
             tripRepository = tripRepository,
             memberRepository = memberRepository,
@@ -252,6 +255,40 @@ class WishlistServiceTest {
         assertEquals(ErrorCode.NOT_A_TRIP_MEMBER, ex.errorCode)
         verify(memberWishlistItemRepository, never()).findByIdAndMemberIdWithPlace(99L, fixture.member.id)
         verify(wishlistItemRepository, never()).save(any(WishlistItem::class.java))
+    }
+
+    @Test
+    fun `addWishListFromPlace creates trip wishlist from canonical place`() {
+        val fixture = fixture()
+        val sourcePlace = place("google-place", "도쿄타워")
+        `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)
+        `when`(currentActor.requireUserId()).thenReturn(fixture.member.id)
+        `when`(memberRepository.findById(fixture.member.id)).thenReturn(Optional.of(fixture.member))
+        `when`(tripRepository.findById(fixture.trip.id)).thenReturn(Optional.of(fixture.trip))
+        `when`(tripMemberRepository.findByTripAndMember(fixture.trip, fixture.member)).thenReturn(fixture.tripMember)
+        `when`(placeRepository.findById(sourcePlace.id)).thenReturn(Optional.of(sourcePlace))
+        `when`(wishlistItemRepository.existsByTrip_IdAndPlace_ExternalPlaceId(fixture.trip.id, "google-place"))
+            .thenReturn(false)
+        `when`(wishlistItemRepository.save(any(WishlistItem::class.java))).thenAnswer { invocation ->
+            val saved = invocation.arguments[0] as WishlistItem
+            ReflectionTestUtils.setField(saved, "id", 90L)
+            saved
+        }
+
+        val result = service.addWishListFromPlace(
+            WishlistCommand.AddFromPlace(
+                tripId = fixture.trip.id,
+                placeId = sourcePlace.id,
+            ),
+        )
+
+        assertEquals(90L, result.wishlistItemId)
+        assertEquals(sourcePlace.id, result.placeId)
+        assertEquals("도쿄타워", result.name)
+        val event = tripRealtimeEventPublisher.events.single()
+        assertEquals(TripRealtimeEventType.WISHLIST, event.type)
+        assertEquals(WishlistAction.ADDED, event.wishlist?.action)
+        assertEquals(90L, event.wishlist?.item?.wishlistItemId)
     }
 
     @Test

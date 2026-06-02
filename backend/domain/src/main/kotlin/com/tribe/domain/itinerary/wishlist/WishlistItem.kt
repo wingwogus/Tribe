@@ -14,6 +14,11 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Column
 import jakarta.persistence.Table
 
+/**
+ * 위시리스트 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 @Table(
     name = "wishlist_item",

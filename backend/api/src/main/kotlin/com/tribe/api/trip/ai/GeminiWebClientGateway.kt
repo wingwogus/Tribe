@@ -6,6 +6,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 
+/**
+ * 여행 외부 adapter 경계.
+ *
+ * 외부 SDK/API 응답을 application port shape로 변환.
+ */
 @Component
 @ConditionalOnProperty(name = ["tribe.trip.review.enabled"], havingValue = "true", matchIfMissing = true)
 @ConditionalOnProperty(name = ["trip.review.ai.provider"], havingValue = "gemini", matchIfMissing = true)

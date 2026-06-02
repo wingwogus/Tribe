@@ -12,33 +12,46 @@ import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import reactor.util.retry.Retry
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
 import java.util.concurrent.TimeoutException
-import reactor.util.retry.Retry
 
+/**
+ * Google Places/Directions adapter.
+ *
+ * 외부 Google 응답을 application `PlaceSearchGateway` 계약으로 변환.
+ */
 @Component
 @ConditionalOnProperty(name = ["tribe.itinerary.place-search.enabled"], havingValue = "true", matchIfMissing = true)
 class GooglePlaceSearchGateway(
     private val webClientBuilder: WebClient.Builder,
     private val objectMapper: ObjectMapper,
     @Value("\${google.maps.key}") private val apiKey: String,
+    @Value("\${google.maps.timeout-ms:5000}") private val timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
 ) : PlaceSearchGateway {
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
+        private const val DEFAULT_TIMEOUT_MILLIS = 5_000L
         private val DETAILS_TIMEOUT = Duration.ofSeconds(5)
         private val DETAILS_RETRY_BACKOFF = Duration.ofMillis(200)
         internal const val SEARCH_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.businessStatus,places.utcOffsetMinutes,places.rating,places.userRatingCount,places.currentOpeningHours,places.editorialSummary"
+        internal const val NEARBY_FIELD_MASK =
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types"
+        internal const val PLACE_SUMMARY_FIELD_MASK =
+            "id,displayName,formattedAddress,location,primaryType,types"
         internal const val DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,photos,editorialSummary"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private val webClient = webClientBuilder.build()
+    private val placesTimeout: Duration = Duration.ofMillis(timeoutMillis)
 
     override fun search(query: String?, language: String, context: PlaceSearchContext): List<PlaceSearchGateway.SearchHit> {
+        // 흐름: searchText body 조립 -> Google 호출 -> PlacesResponse를 SearchHit 후보로 축소.
         val body = buildSearchRequestBody(query, language, context) ?: return emptyList()
         val normalizedRegionCode = body["regionCode"] as? String
         val radiusMeters = ((body["locationBias"] as? Map<*, *>)?.get("circle") as? Map<*, *>)?.get("radius")
@@ -46,10 +59,7 @@ class GooglePlaceSearchGateway(
         val response = webClient.post()
             .uri("https://places.googleapis.com/v1/places:searchText")
             .header("X-Goog-Api-Key", apiKey)
-            .header(
-                "X-Goog-FieldMask",
-                SEARCH_FIELD_MASK,
-            )
+            .header("X-Goog-FieldMask", SEARCH_FIELD_MASK)
             .bodyValue(body)
             .retrieve()
             .bodyToMono(PlacesResponse::class.java)
@@ -67,33 +77,95 @@ class GooglePlaceSearchGateway(
             .block()
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
-        return response.places?.map {
-            val placeTypeSummary = PlaceResultAssembler.fromRawTypes(it.primaryType, it.types ?: emptyList())
-            PlaceSearchGateway.SearchHit(
-                externalPlaceId = it.id,
-                placeName = it.displayName?.text ?: "이름 없음",
-                address = it.formattedAddress ?: "주소 정보 없음",
-                latitude = it.location?.latitude ?: 0.0,
-                longitude = it.location?.longitude ?: 0.0,
-                primaryType = placeTypeSummary?.primaryType,
-                types = placeTypeSummary?.types ?: emptyList(),
-                businessStatus = it.businessStatus,
-                rating = it.rating,
-                userRatingCount = it.userRatingCount,
-                editorialSummary = it.editorialSummary?.text,
-                openingSummary = toSearchOpeningSummary(it),
+        return response.places?.map(::toSearchHit) ?: emptyList()
+    }
+
+    override fun searchNearby(request: PlaceSearchGateway.NearbySearchRequest): List<PlaceSearchGateway.SearchHit> {
+        // 주변 검색은 application에서 검증된 request만 받아 Google Nearby body로 변환.
+        val body = buildNearbySearchRequestBody(request)
+
+        val response = webClient.post()
+            .uri("https://places.googleapis.com/v1/places:searchNearby")
+            .header("X-Goog-Api-Key", apiKey)
+            .header("X-Goog-FieldMask", NEARBY_FIELD_MASK)
+            .bodyValue(body)
+            .retrieve()
+            .bodyToMono(PlacesResponse::class.java)
+            .timeout(placesTimeout)
+            .doOnError(WebClientResponseException::class.java) { ex ->
+                logger.error(
+                    "Google Places searchNearby failed: status={}, category={}, radiusMeters={}, body={}",
+                    ex.statusCode.value(),
+                    request.category.name,
+                    request.radiusMeters,
+                    ex.responseBodyAsString,
+                    ex,
+                )
+            }
+            .doOnError(TimeoutException::class.java) {
+                logger.error(
+                    "Google Places searchNearby timed out: category={}, radiusMeters={}, timeoutMillis={}",
+                    request.category.name,
+                    request.radiusMeters,
+                    timeoutMillis,
+                    it,
+                )
+            }
+            .onErrorMap(TimeoutException::class.java) { BusinessException(ErrorCode.EXTERNAL_API_ERROR) }
+            .doOnError { logger.error("Error calling Google Places Nearby API", it) }
+            .block()
+            ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
+
+        return response.places?.mapNotNull(::toNearbySearchHit) ?: emptyList()
+    }
+
+    override fun getPlaceSummary(externalPlaceId: String, language: String): PlaceSearchGateway.SearchHit? {
+        // resolve/save 흐름에서 내부 Place를 만들 수 있는 최소 필드만 조회.
+        val response = try {
+            webClient.get()
+                .uri { builder ->
+                    builder
+                        .scheme("https")
+                        .host("places.googleapis.com")
+                        .path("/v1/places/{placeId}")
+                        .queryParam("languageCode", language)
+                        .build(externalPlaceId)
+                }
+                .header("X-Goog-Api-Key", apiKey)
+                .header("X-Goog-FieldMask", PLACE_SUMMARY_FIELD_MASK)
+                .retrieve()
+                .bodyToMono(PlaceDetailsResponse::class.java)
+                .timeout(placesTimeout)
+                .block()
+        } catch (ex: WebClientResponseException) {
+            if (ex.statusCode.value() == 404) {
+                return null
+            }
+            logger.error(
+                "Google Place Summary failed: status={}, body={}",
+                ex.statusCode.value(),
+                ex.responseBodyAsString,
+                ex,
             )
-        } ?: emptyList()
+            throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
+        } ?: return null
+
+        return toSearchHit(response)
     }
 
     override fun getPlaceDetails(externalPlaceId: String, language: String): PlaceSearchGateway.DetailsPayload? {
+        // 상세 조회는 snapshot 보강용 필드까지 포함한 별도 field mask 사용.
         val response = webClient.get()
-            .uri("https://places.googleapis.com/v1/places/{placeId}", externalPlaceId)
+            .uri { builder ->
+                builder
+                    .scheme("https")
+                    .host("places.googleapis.com")
+                    .path("/v1/places/{placeId}")
+                    .queryParam("languageCode", language)
+                    .build(externalPlaceId)
+            }
             .header("X-Goog-Api-Key", apiKey)
-            .header(
-                "X-Goog-FieldMask",
-                DETAILS_FIELD_MASK,
-            )
+            .header("X-Goog-FieldMask", DETAILS_FIELD_MASK)
             .retrieve()
             .bodyToMono(PlaceDetailsResponse::class.java)
             .timeout(DETAILS_TIMEOUT)
@@ -165,6 +237,7 @@ class GooglePlaceSearchGateway(
         }
 
     internal fun toDetailsPayload(response: PlaceDetailsResponse): PlaceSearchGateway.DetailsPayload {
+        // Google 영업시간 JSON 원문은 UI 재해석 가능성을 위해 snapshot에 보관.
         val regularOpeningHoursJson = response.regularOpeningHours?.let { objectMapper.writeValueAsString(it) }
         val currentOpeningHoursJson = response.currentOpeningHours?.let { objectMapper.writeValueAsString(it) }
 
@@ -215,6 +288,7 @@ class GooglePlaceSearchGateway(
     }
 
     override fun getPhoto(photoName: String, maxWidthPx: Int): PlacePhotoMedia? {
+        // Google photo media는 redirect URI만 받아 프론트에서 직접 사용 가능한 형태로 전달.
         return webClient.get()
             .uri("https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}&skipHttpRedirect=true", photoName, maxWidthPx)
             .header("X-Goog-Api-Key", apiKey)
@@ -232,6 +306,7 @@ class GooglePlaceSearchGateway(
     }
 
     override fun directions(originPlaceId: String, destinationPlaceId: String, travelMode: String): RouteDetails? {
+        // Directions API는 legacy endpoint 사용, application에는 RouteDetails만 노출.
         val response = webClient.get()
             .uri { builder ->
                 builder
@@ -252,12 +327,14 @@ class GooglePlaceSearchGateway(
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
         if (response.status != "OK") {
+            // Google이 경로 없음/지원 불가를 반환하면 비즈니스 예외 대신 빈 경로 의미 유지.
             return null
         }
 
         val route = response.routes.firstOrNull() ?: return null
         val leg = route.legs.firstOrNull() ?: return null
-            val origin = searchRoutePlaceByName(route.originName)
+        // Directions 응답의 이름/주소를 다시 searchText로 보강, 실패 시 placeId 기반 placeholder 유지.
+        val origin = searchRoutePlaceByName(route.originName)
             ?: PlaceSearchGateway.SearchHit(
                 externalPlaceId = originPlaceId,
                 placeName = route.originName ?: "출발지",
@@ -265,7 +342,7 @@ class GooglePlaceSearchGateway(
                 latitude = 0.0,
                 longitude = 0.0,
             )
-            val destination = searchRoutePlaceByName(route.destinationName)
+        val destination = searchRoutePlaceByName(route.destinationName)
             ?: PlaceSearchGateway.SearchHit(
                 externalPlaceId = destinationPlaceId,
                 placeName = route.destinationName ?: "도착지",
@@ -306,6 +383,7 @@ class GooglePlaceSearchGateway(
         language: String,
         context: PlaceSearchContext,
     ): Map<String, Any>? {
+        // 빈 검색어는 Google 호출 자체를 만들지 않는 계약.
         val normalizedQuery = query?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val normalizedRegionCode = context.regionCode
             ?.trim()
@@ -317,6 +395,7 @@ class GooglePlaceSearchGateway(
             put("languageCode", language)
             normalizedRegionCode?.let { put("regionCode", it) }
             if (context.latitude != null && context.longitude != null) {
+                // 텍스트 검색은 locationBias로만 위치 선호도 반영, hard restriction 아님.
                 val radius = (context.radiusMeters ?: MAX_RADIUS_METERS).coerceIn(1, MAX_RADIUS_METERS)
                 put(
                     "locationBias",
@@ -334,11 +413,51 @@ class GooglePlaceSearchGateway(
         }
     }
 
+    internal fun buildNearbySearchRequestBody(
+        request: PlaceSearchGateway.NearbySearchRequest,
+    ): Map<String, Any> {
+        // 주변 검색은 category별 includedTypes와 지도 중심 원형 제한을 함께 전달.
+        return buildMap {
+            put("includedTypes", googleIncludedTypesFor(request.category))
+            put("maxResultCount", request.maxResultCount)
+            put("languageCode", request.language)
+            put("rankPreference", "DISTANCE")
+            request.region?.let { put("regionCode", it) }
+            put(
+                "locationRestriction",
+                mapOf(
+                    "circle" to mapOf(
+                        "center" to mapOf(
+                            "latitude" to request.latitude,
+                            "longitude" to request.longitude,
+                        ),
+                        "radius" to request.radiusMeters,
+                    ),
+                ),
+            )
+        }
+    }
+
+    // 앱 카테고리를 Google Places includedTypes로 변환.
+    internal fun googleIncludedTypesFor(category: NearbyPlaceCategory): List<String> = when (category) {
+        NearbyPlaceCategory.RESTAURANT -> listOf("restaurant")
+        NearbyPlaceCategory.CAFE -> listOf("cafe", "coffee_shop")
+        NearbyPlaceCategory.BAKERY -> listOf("bakery")
+        NearbyPlaceCategory.BAR -> listOf("bar", "pub")
+        NearbyPlaceCategory.ATTRACTION -> listOf("tourist_attraction")
+        NearbyPlaceCategory.SHOPPING -> listOf("shopping_mall", "department_store", "market", "store")
+        NearbyPlaceCategory.PARK -> listOf("park")
+        NearbyPlaceCategory.MUSEUM -> listOf("museum", "art_gallery")
+        NearbyPlaceCategory.STAY -> listOf("hotel", "hostel", "lodging", "resort_hotel")
+    }
+
     private fun searchRoutePlaceByName(name: String?): PlaceSearchGateway.SearchHit? {
+        // Directions에 external placeId가 없을 때 이름 검색으로 표시용 좌표 보강.
         val normalizedName = name?.trim()?.takeIf { it.isNotBlank() } ?: return null
         return search(normalizedName, "ko", PlaceSearchContext(regionCode = null)).firstOrNull()
     }
 
+    // Google price enum을 앱의 숫자 단계로 축소.
     internal fun parsePriceLevel(priceLevel: String?): Int? = when (priceLevel) {
         null, "PRICE_LEVEL_UNSPECIFIED" -> null
         "PRICE_LEVEL_FREE" -> 0
@@ -347,6 +466,58 @@ class GooglePlaceSearchGateway(
         "PRICE_LEVEL_EXPENSIVE" -> 3
         "PRICE_LEVEL_VERY_EXPENSIVE" -> 4
         else -> null
+    }
+
+    private fun toSearchHit(place: PlacesResponse.PlaceResult): PlaceSearchGateway.SearchHit {
+        // 목록 응답의 Google place를 application 공통 후보 shape로 축소.
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = place.location?.latitude ?: 0.0,
+            longitude = place.location?.longitude ?: 0.0,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+            businessStatus = place.businessStatus,
+            rating = place.rating,
+            userRatingCount = place.userRatingCount,
+            editorialSummary = place.editorialSummary?.text,
+            openingSummary = toSearchOpeningSummary(place),
+        )
+    }
+
+    internal fun toNearbySearchHit(place: PlacesResponse.PlaceResult): PlaceSearchGateway.SearchHit? {
+        // 주변 검색은 좌표 없는 후보를 목록에서 제외.
+        val location = place.location ?: return null
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = location.latitude,
+            longitude = location.longitude,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+        )
+    }
+
+    private fun toSearchHit(place: PlaceDetailsResponse): PlaceSearchGateway.SearchHit {
+        // summary/details 응답도 검색 후보와 같은 SearchHit shape 재사용.
+        val placeTypeSummary = PlaceResultAssembler.fromRawTypes(place.primaryType, place.types ?: emptyList())
+        return PlaceSearchGateway.SearchHit(
+            externalPlaceId = place.id,
+            placeName = place.displayName?.text ?: "이름 없음",
+            address = place.formattedAddress ?: "주소 정보 없음",
+            latitude = place.location?.latitude ?: 0.0,
+            longitude = place.location?.longitude ?: 0.0,
+            primaryType = placeTypeSummary?.primaryType,
+            types = placeTypeSummary?.types ?: emptyList(),
+            businessStatus = place.businessStatus,
+            rating = place.rating,
+            userRatingCount = place.userRatingCount,
+            editorialSummary = place.editorialSummary?.text,
+        )
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -361,12 +532,12 @@ class GooglePlaceSearchGateway(
             val displayName: DisplayName?,
             val primaryType: String?,
             val types: List<String>?,
-            val businessStatus: String?,
-            val utcOffsetMinutes: Int?,
-            val rating: Double?,
-            val userRatingCount: Int?,
-            val currentOpeningHours: JsonNode?,
-            val editorialSummary: DisplayName?,
+            val businessStatus: String? = null,
+            val utcOffsetMinutes: Int? = null,
+            val rating: Double? = null,
+            val userRatingCount: Int? = null,
+            val currentOpeningHours: JsonNode? = null,
+            val editorialSummary: DisplayName? = null,
         )
 
         @JsonIgnoreProperties(ignoreUnknown = true)
@@ -380,7 +551,6 @@ class GooglePlaceSearchGateway(
             val text: String,
             val languageCode: String?,
         )
-
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

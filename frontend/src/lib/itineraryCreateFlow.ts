@@ -15,7 +15,7 @@ export type MinimalCreatedItinerary = {
   } | null;
 };
 
-export type SelectedPlacePanelState = {
+type SelectedScheduledPlacePanelState = {
   mode: "itinerary" | "wishlist";
   placeId: number;
   itineraryId?: number;
@@ -23,6 +23,15 @@ export type SelectedPlacePanelState = {
   visitDay?: number | null;
   markerLatLng: { lat: number; lng: number };
 };
+
+type SelectedNearbyPlacePanelState = {
+  mode: "nearby";
+  placeId?: number | null;
+  externalPlaceId: string;
+  markerLatLng: { lat: number; lng: number };
+};
+
+export type SelectedPlacePanelState = SelectedScheduledPlacePanelState | SelectedNearbyPlacePanelState;
 
 export const buildPlaceItineraryCreateData = (placeId?: number | null): PlaceItineraryCreateData => ({
   placeId: placeId ?? null,
@@ -62,6 +71,21 @@ export const toWishlistPanelSelection = (item: {
   markerLatLng: {
     lat: item.latitude,
     lng: item.longitude,
+  },
+});
+
+export const toNearbyPanelSelection = (place: {
+  placeId?: number | null;
+  externalPlaceId: string;
+  latitude: number;
+  longitude: number;
+}): SelectedPlacePanelState => ({
+  mode: "nearby",
+  placeId: place.placeId ?? null,
+  externalPlaceId: place.externalPlaceId,
+  markerLatLng: {
+    lat: place.latitude,
+    lng: place.longitude,
   },
 });
 

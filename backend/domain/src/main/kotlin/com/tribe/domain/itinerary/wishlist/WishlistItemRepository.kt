@@ -7,6 +7,11 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
+/**
+ * 위시리스트 repository 경계.
+ *
+ * 도메인 조회 의도와 persistence query 이름 분리.
+ */
 interface WishlistItemRepository : JpaRepository<WishlistItem, Long>, WishlistItemRepositoryCustom {
     @Query(
         value = """
@@ -54,4 +59,8 @@ interface WishlistItemRepository : JpaRepository<WishlistItem, Long>, WishlistIt
     @Modifying
     @Query("delete from WishlistItem w where w.adder.id = :adderId")
     fun deleteByAdderId(adderId: Long)
+
+    @Modifying
+    @Query("delete from WishlistItem w where w.trip.id = :tripId")
+    fun deleteByTripId(@Param("tripId") tripId: Long)
 }

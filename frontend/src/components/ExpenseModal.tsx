@@ -83,9 +83,7 @@ export const ExpenseModal = ({
         name: member.nickname,
         checked: true
       })));
-      if (!selectedPayerId && tripMembers[0]?.tripMemberId) {
-        setSelectedPayerId(tripMembers[0].tripMemberId);
-      }
+      setSelectedPayerId((currentPayerId) => currentPayerId ?? tripMembers[0]?.tripMemberId ?? null);
     }
   }, [tripMembers]);
 

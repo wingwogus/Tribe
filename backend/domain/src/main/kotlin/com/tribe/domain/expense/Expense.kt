@@ -19,6 +19,11 @@ import jakarta.persistence.OneToMany
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 지출 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class Expense(
     @ManyToOne(fetch = FetchType.LAZY)

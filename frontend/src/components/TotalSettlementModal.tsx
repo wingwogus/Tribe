@@ -4,7 +4,7 @@ import {Card, CardContent, CardHeader} from "@/components/ui/card";
 import {Separator} from "@/components/ui/separator";
 import {Badge} from "@/components/ui/badge";
 import {ArrowRight, Calculator, CheckCircle2, Info, Users, ChevronDown} from "lucide-react";
-import {TotalSettlementResponse} from "@/api/settlement";
+import type {DebtRelation, TotalSettlementResponse} from "@/api/settlement";
 import {getCurrencyInfo} from "@/lib/currency";
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {useMemo, useState} from "react";
@@ -26,14 +26,14 @@ export const TotalSettlementModal = ({
 
   const groupedDebtRelations = useMemo(() => {
     if (!settlement?.debtRelations) return {};
-    return settlement.debtRelations.reduce((acc, relation) => {
+    return settlement.debtRelations.reduce<Record<string, DebtRelation[]>>((acc, relation) => {
       const key = relation.fromNickname;
       if (!acc[key]) {
         acc[key] = [];
       }
       acc[key].push(relation);
       return acc;
-    }, {} as Record<string, typeof settlement.debtRelations>);
+    }, {});
   }, [settlement?.debtRelations]);
 
   const toggleGroup = (name: string) => {

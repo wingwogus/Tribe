@@ -16,6 +16,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
+/**
+ * 위시리스트 HTTP 진입점.
+ *
+ * transport DTO와 application use case 연결 경계.
+ */
 @RestController
 @RequestMapping("/api/v1/trips/{tripId}/wishlists")
 class WishlistController(
@@ -37,6 +42,16 @@ class WishlistController(
         @Valid @RequestBody request: WishlistRequests.WishlistAddFromMemberWishlistRequest,
     ): ResponseEntity<ApiResponse<WishlistResponses.WishlistItemResponse>> {
         val result = wishlistService.addWishListFromMemberWishlist(request.toCommand(tripId))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
+    }
+
+    @PostMapping("/from-place")
+    fun addWishlistItemFromPlace(
+        @PathVariable tripId: Long,
+        @Valid @RequestBody request: WishlistRequests.WishlistAddFromPlaceRequest,
+    ): ResponseEntity<ApiResponse<WishlistResponses.WishlistItemResponse>> {
+        val result = wishlistService.addWishListFromPlace(request.toCommand(tripId))
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.ok(WishlistResponses.WishlistItemResponse.from(result)))
     }

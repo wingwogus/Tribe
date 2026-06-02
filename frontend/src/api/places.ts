@@ -22,6 +22,10 @@ export interface PlaceSearchResult {
   openingSummary?: OpeningSummary | null;
 }
 
+export interface ResolvedPlaceResult extends PlaceSearchResult {
+  placeId: number;
+}
+
 export interface PlaceDetailResponse {
   placeId: number;
   externalPlaceId: string;
@@ -38,8 +42,30 @@ export interface PlaceDetailResponse {
   internationalPhoneNumber?: string | null;
   websiteUri?: string | null;
   googleMapsUri?: string | null;
+  priceLevel?: number | null;
   regularOpeningHoursJson?: string | null;
   currentOpeningHoursJson?: string | null;
+}
+
+export type NearbyPlaceCategory =
+  | "RESTAURANT"
+  | "CAFE"
+  | "BAKERY"
+  | "BAR"
+  | "ATTRACTION"
+  | "SHOPPING"
+  | "PARK"
+  | "MUSEUM"
+  | "STAY";
+
+export interface NearbyPlaceSearchRequest {
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  maxResultCount: number;
+  category: NearbyPlaceCategory;
+  language?: string;
+  region?: string;
 }
 
 // API functions
@@ -61,6 +87,25 @@ export const placesApi = {
       }
     );
     return response.data.data ?? [];
+  },
+
+  searchNearby: async (request: NearbyPlaceSearchRequest): Promise<PlaceSearchResult[]> => {
+    const response = await authenticatedAxios.post<{ data: PlaceSearchResult[] }>(
+      '/places/nearby',
+      request,
+    );
+    return response.data.data;
+  },
+
+  resolveExternalPlace: async (
+    externalPlaceId: string,
+    language: string = "ko",
+  ): Promise<ResolvedPlaceResult> => {
+    const response = await authenticatedAxios.post<{ data: ResolvedPlaceResult }>(
+      '/places/resolve',
+      { externalPlaceId, language },
+    );
+    return response.data.data;
   },
 
   getPlaceDetail: async (placeId: number, language: string = "ko"): Promise<PlaceDetailResponse> => {

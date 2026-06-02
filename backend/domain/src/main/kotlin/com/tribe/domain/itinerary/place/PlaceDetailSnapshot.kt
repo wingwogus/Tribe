@@ -9,6 +9,11 @@ import jakarta.persistence.MapsId
 import jakarta.persistence.OneToOne
 import java.time.LocalDateTime
 
+/**
+ * 장소 상세 snapshot.
+ *
+ * Google details 응답 중 목록 본문에 두기 무거운 필드 보관.
+ */
 @Entity
 class PlaceDetailSnapshot(
     @Id
@@ -31,6 +36,7 @@ class PlaceDetailSnapshot(
     var userRatingCount: Int? = null,
     @Column(name = "price_level")
     var priceLevel: Int? = null,
+    // UI가 원문 영업시간을 재해석할 수 있도록 Google JSON 보존.
     @Column(name = "regular_opening_hours_json", columnDefinition = "TEXT")
     var regularOpeningHoursJson: String? = null,
     @Column(name = "current_opening_hours_json", columnDefinition = "TEXT")
@@ -41,6 +47,7 @@ class PlaceDetailSnapshot(
     var currentOpeningHoursSyncedAt: LocalDateTime? = null,
     @Column(name = "primary_photo_name", columnDefinition = "TEXT")
     var primaryPhotoName: String? = null,
+    // Google editorialSummary 원문 요약.
     @Column(name = "editorial_summary", columnDefinition = "TEXT")
     var editorialSummary: String? = null,
     @Column(name = "details_synced_at")

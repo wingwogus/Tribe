@@ -2,6 +2,11 @@ package com.tribe.api.trip.core
 
 import com.tribe.application.trip.core.TripResult
 
+/**
+ * 여행 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object TripResponses {
     data class InvitationResponse(
         val inviteLink: String,
@@ -15,6 +20,7 @@ object TripResponses {
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
         val role: String,
     ) {
         companion object {
@@ -22,6 +28,7 @@ object TripResponses {
                 tripMemberId = result.tripMemberId,
                 memberId = result.memberId,
                 nickname = result.nickname,
+                avatar = result.avatar,
                 role = result.role,
             )
         }
@@ -35,6 +42,7 @@ object TripResponses {
         val country: String,
         val regionCode: String?,
         val memberCount: Int,
+        val members: List<MemberResponse>,
     ) {
         companion object {
             fun from(result: TripResult.SimpleTrip) = SimpleTripResponse(
@@ -45,6 +53,7 @@ object TripResponses {
                 country = result.country,
                 regionCode = result.regionCode,
                 memberCount = result.memberCount,
+                members = result.members.map(MemberResponse::from),
             )
         }
     }
