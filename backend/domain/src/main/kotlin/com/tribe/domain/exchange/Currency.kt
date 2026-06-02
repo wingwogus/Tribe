@@ -8,6 +8,11 @@ import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 환율 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 @Table(name = "currency")
 @IdClass(CurrencyId::class)

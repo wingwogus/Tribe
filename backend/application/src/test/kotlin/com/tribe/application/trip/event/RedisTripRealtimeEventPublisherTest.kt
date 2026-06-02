@@ -25,6 +25,7 @@ class RedisTripRealtimeEventPublisherTest {
                     tripMemberId = 21L,
                     memberId = 2L,
                     nickname = "member",
+                    avatar = "https://cdn.example.com/member.png",
                     role = "EXITED",
                 ),
             ),

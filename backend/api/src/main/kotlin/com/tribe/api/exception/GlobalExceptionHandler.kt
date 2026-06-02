@@ -15,6 +15,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.util.*
 
+/**
+ * 예외 framework callback 경계.
+ *
+ * Spring 실행 흐름과 Tribe 오류/인증 규칙 연결.
+ */
 @RestControllerAdvice
 class GlobalExceptionHandler {
     private val logger = KotlinLogging.logger {}

@@ -4,12 +4,18 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.tribe.domain.itinerary.place.Place
 import org.springframework.stereotype.Component
 
+/**
+ * 장소 응답 assembler.
+ *
+ * 외부 후보와 내부 canonical Place를 API 응답 가능한 shape로 조립.
+ */
 @Component
 class PlaceResultAssembler {
     fun toNormalizedCategoryKey(place: Place?): NormalizedPlaceCategoryKey? =
         Companion.toNormalizedCategoryKey(toPlaceTypeSummary(place))
 
     fun toPlaceTypeSummary(place: Place?): PlaceTypeSummary? {
+        // 저장된 Place의 Google type JSON을 읽어 표시 라벨과 normalized category 근거 생성.
         if (place == null) return null
         return fromGoogleTypesJson(
             primaryType = place.googlePrimaryType,
@@ -20,6 +26,7 @@ class PlaceResultAssembler {
     fun toPhotoHint(place: Place?): PlaceResult.PhotoHint? = null
 
     fun toDetailSummary(place: Place?): PlaceDetailSummary? {
+        // 목록 응답에는 상세 전체 대신 평점/상태/요약만 얇게 포함.
         val snapshot = place?.detailSnapshot ?: return null
         return PlaceDetailSummary(
             businessStatus = place.businessStatus,
@@ -33,6 +40,7 @@ class PlaceResultAssembler {
         hit: PlaceSearchGateway.SearchHit,
         canonicalPlace: Place?,
     ): PlaceResult.SearchItem {
+        // 외부 후보 type을 우선 사용하고, 저장된 Place type은 보조 근거로 사용.
         val placeTypeSummary = fromRawTypes(hit.primaryType, hit.types)
             ?: toPlaceTypeSummary(canonicalPlace)
         return PlaceResult.SearchItem(
@@ -51,6 +59,7 @@ class PlaceResultAssembler {
     }
 
     fun toDetail(place: Place): PlaceResult.Detail {
+        // 상세 응답은 내부 Place와 detailSnapshot을 합쳐 단일 response shape 구성.
         val placeTypeSummary = toPlaceTypeSummary(place)
         return PlaceResult.Detail(
             placeId = place.id,
@@ -67,6 +76,7 @@ class PlaceResultAssembler {
             internationalPhoneNumber = place.detailSnapshot?.internationalPhoneNumber,
             websiteUri = place.detailSnapshot?.websiteUri,
             googleMapsUri = place.detailSnapshot?.googleMapsUri,
+            priceLevel = place.detailSnapshot?.priceLevel,
             regularOpeningHoursJson = place.detailSnapshot?.regularOpeningHoursJson,
             currentOpeningHoursJson = place.detailSnapshot?.currentOpeningHoursJson,
         )
@@ -76,6 +86,7 @@ class PlaceResultAssembler {
         private val objectMapper = jacksonObjectMapper()
 
         fun fromRawTypes(primaryType: String?, types: List<String>): PlaceTypeSummary? {
+            // Google type 정보가 전혀 없으면 분류 요약도 비움.
             if (primaryType == null && types.isEmpty()) {
                 return null
             }
@@ -95,6 +106,7 @@ class PlaceResultAssembler {
 
         fun decodeGoogleTypes(json: String?): List<String> =
             json?.let {
+                // 저장된 JSON이 깨져도 목록/상세 응답은 빈 type으로 계속 조립.
                 runCatching { objectMapper.readValue(it, Array<String>::class.java).toList() }.getOrDefault(emptyList())
             } ?: emptyList()
 
@@ -105,6 +117,7 @@ class PlaceResultAssembler {
             primaryType: String?,
             types: List<String>,
         ): NormalizedPlaceCategoryKey? {
+            // primaryType을 첫 후보로 두고 types 전체를 보조 후보로 병합.
             val candidates = buildList {
                 primaryType?.let(::add)
                 addAll(types)
@@ -114,6 +127,7 @@ class PlaceResultAssembler {
                 return null
             }
 
+            // 더 구체적인 음식점/장소 유형을 먼저 매칭해 넓은 restaurant/store 분류보다 우선.
             return when {
                 candidates.any { it in setOf("korean_restaurant") } -> NormalizedPlaceCategoryKey.KOREAN_FOOD
                 candidates.any { it in setOf("japanese_restaurant", "ramen_restaurant", "sushi_restaurant") } -> NormalizedPlaceCategoryKey.JAPANESE_FOOD

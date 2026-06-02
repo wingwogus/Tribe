@@ -46,6 +46,9 @@ Current route groups include:
 - `POST /api/v1/trips/{tripId}/invite`
 - `POST /api/v1/trips/join`
 - `POST /api/v1/trips/import`
+- `PATCH /api/v1/trips/{tripId}` accepts `deleteOutOfRangeItems?: boolean` for confirmed destructive date-range shrink. If omitted or false, shrinking a trip below existing itinerary item `visitDay` values fails with `TRIP_008` and no update is applied. Retrying the same update with `deleteOutOfRangeItems: true` updates the trip and deletes out-of-range itinerary items atomically.
+- Trip member payloads returned from trip summary/detail endpoints include `avatar: string | null`.
+- `GET /api/v1/trips` summary rows include `members[]` for rendering compact member profile stacks; `memberCount` remains the authoritative count.
 
 ### Itinerary and Places
 
@@ -53,6 +56,15 @@ Current route groups include:
 - `PATCH /api/v1/trips/{tripId}/items/order`
 - `GET /api/v1/trips/{tripId}/items/directions`
 - `GET /api/v1/places/search`
+- `POST /api/v1/places/nearby`
+- `POST /api/v1/places/resolve`
+- `GET /api/v1/places/{placeId}` detail payload includes place metadata, contact links, opening hours, and `priceLevel: number | null`.
+- `POST /api/v1/trips/{tripId}/wishlists`
+- `POST /api/v1/trips/{tripId}/wishlists/from-place`
+- `POST /api/v1/trips/{tripId}/wishlists/from-member-wishlist`
+- `GET /api/v1/trips/{tripId}/wishlists`
+- `DELETE /api/v1/trips/{tripId}/wishlists`
+- Wishlist item `adder` payloads include `avatar: string | null`.
 
 ### Expense and Settlement
 

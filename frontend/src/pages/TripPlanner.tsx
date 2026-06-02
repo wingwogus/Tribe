@@ -4,30 +4,42 @@ import {useNavigate, useParams} from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRightLeft,
+  BedDouble,
   Calculator,
   Calendar,
   Check,
   ChevronDown,
-  ChevronRight,
+  ChevronLeft,
   ChevronUp,
   Clock,
+  Coffee,
   Copy,
+  Croissant,
   DollarSign,
   Edit3,
   ExternalLink,
   GripVertical,
   HelpCircle,
+  Landmark,
   Loader2,
+  MapPin,
   MoreVertical,
   MoveRight,
   Plus,
+  RotateCw,
+  ShoppingBag,
   Sparkles,
   Star,
+  TreePine,
   Trash2,
+  Utensils,
   Users,
   MessageCircle,
+  Wine,
+  X,
+  type LucideIcon,
 } from "lucide-react";
-import {getGoogleMapsSearchUrl, openGoogleMaps} from "@/lib/googleMaps";
+import {getGoogleMapsPlaceUrl, getGoogleMapsSearchUrl, openGoogleMaps} from "@/lib/googleMaps";
 import {
   closestCenter,
   DndContext,
@@ -72,7 +84,7 @@ import {ExpenseListModal} from "@/components/ExpenseListModal";
 import {DailySettlementModal} from "@/components/DailySettlementModal";
 import {TotalSettlementModal} from "@/components/TotalSettlementModal";
 import {TripMembersModal} from "@/components/TripMembersModal";
-import {ItineraryMap, ItineraryMapHandle} from "@/components/ItineraryMap";
+import {ItineraryMap, ItineraryMapHandle, type GooglePoiSelection} from "@/components/ItineraryMap";
 import {PlaceDetailPanel, type PlaceDetailPanelPlace} from "@/components/PlaceDetailPanel";
 import {TripChatModal} from "@/components/TripChatModal";
 import {tripApi} from "@/api/trips";
@@ -87,7 +99,7 @@ import {
 } from "@/api/expenses";
 import {Badge} from "@/components/ui/badge";
 import {settlementApi} from "@/api/settlement";
-import {PlaceSearchResult, placesApi} from "@/api/places";
+import {NearbyPlaceCategory, PlaceSearchResult, placesApi} from "@/api/places";
 import {getMemberInfo} from "@/api/auth";
 import {useToast} from "@/hooks/use-toast";
 import {useIsMobile} from "@/hooks/use-mobile";
@@ -100,6 +112,7 @@ import {
   buildPlaceItineraryCreateData,
   runCreatePlaceItineraryFlow,
   toItineraryPanelSelection,
+  toNearbyPanelSelection,
   toWishlistPanelSelection,
   transitionWishlistSelectionAfterCreate,
   type SelectedPlacePanelState,
@@ -117,7 +130,45 @@ import {
   getPlaceTypeLabelFromKey,
   matchesPlaceTypeFilter,
 } from "@/lib/placePresentation";
-import {formatTripDestination} from "@/lib/tripRegions";
+import {formatTripDestination, getCountryOptionByCode2} from "@/lib/tripRegions";
+
+const NEARBY_CATEGORY_OPTIONS: { value: NearbyPlaceCategory; label: string; Icon: LucideIcon }[] = [
+  { value: "RESTAURANT", label: "음식점", Icon: Utensils },
+  { value: "CAFE", label: "카페", Icon: Coffee },
+  { value: "BAKERY", label: "베이커리", Icon: Croissant },
+  { value: "BAR", label: "바", Icon: Wine },
+  { value: "ATTRACTION", label: "명소", Icon: Landmark },
+  { value: "SHOPPING", label: "쇼핑", Icon: ShoppingBag },
+  { value: "PARK", label: "공원", Icon: TreePine },
+  { value: "MUSEUM", label: "박물관", Icon: Landmark },
+  { value: "STAY", label: "숙소", Icon: BedDouble },
+];
+
+const DEFAULT_NEARBY_RADIUS_METERS = 1000;
+const DESKTOP_PANEL_MARGIN = 16;
+const DESKTOP_PANEL_GAP = 12;
+const DESKTOP_QUICK_MENU_WIDTH = 84;
+const DESKTOP_ITINERARY_PANEL_WIDTH = 360;
+const DESKTOP_SECONDARY_PANEL_WIDTH = 376;
+const DESKTOP_PRIMARY_PANEL_LEFT = DESKTOP_PANEL_MARGIN + DESKTOP_QUICK_MENU_WIDTH + DESKTOP_PANEL_GAP;
+
+const getDesktopVisibleMapLeftInsetPx = (panelStackWidth: number) => (
+  panelStackWidth > 0
+    ? DESKTOP_PRIMARY_PANEL_LEFT + panelStackWidth + DESKTOP_PANEL_GAP
+    : 0
+);
+
+type DesktopSecondaryPanel = "wishlist" | "placeDetail" | null;
+type DesktopPrimaryPanel = "itinerary" | "wishlist" | "nearby";
+
+const formatNearbyRadiusLabel = (radiusMeters: number) => {
+  if (radiusMeters < 1000) {
+    return `${radiusMeters}m`;
+  }
+
+  const kilometers = radiusMeters / 1000;
+  return `${Number.isInteger(kilometers) ? kilometers : kilometers.toFixed(1)}km`;
+};
 
 type DaySection = {
   visitDay: number;
@@ -576,6 +627,7 @@ const TripPlanner = () => {
   const isMobile = useIsMobile();
   
   const [selectedDay, setSelectedDay] = useState(1);
+  const [googlePoiAction, setGooglePoiAction] = useState<"itinerary" | "wishlist" | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
   const mapRef = useRef<ItineraryMapHandle>(null);
   const [showPlaceSearchModal, setShowPlaceSearchModal] = useState(false);
@@ -655,7 +707,9 @@ const TripPlanner = () => {
     sourceVisitDay: null,
   });
 
-  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [desktopPrimaryPanel, setDesktopPrimaryPanel] = useState<DesktopPrimaryPanel>("itinerary");
+  const [desktopSecondaryPanel, setDesktopSecondaryPanel] = useState<DesktopSecondaryPanel>(null);
+  const [isDesktopItineraryCollapsed, setIsDesktopItineraryCollapsed] = useState(false);
   const [wishlistSearchInput, setWishlistSearchInput] = useState("");
   const [wishlistSearchQuery, setWishlistSearchQuery] = useState("");
   const [isItineraryDrawerOpen, setIsItineraryDrawerOpen] = useState(false);
@@ -664,6 +718,16 @@ const TripPlanner = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlaceTypeFilter, setSelectedPlaceTypeFilter] = useState("ALL");
   const [selectedPlacePanel, setSelectedPlacePanel] = useState<SelectedPlacePanelState | null>(null);
+  const [selectedNearbyCategory, setSelectedNearbyCategory] = useState<NearbyPlaceCategory>("CAFE");
+  const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState(DEFAULT_NEARBY_RADIUS_METERS);
+  const [nearbyResults, setNearbyResults] = useState<PlaceSearchResult[]>([]);
+  const [selectedNearbyPlaceExternalId, setSelectedNearbyPlaceExternalId] = useState<string | null>(null);
+  const [isNearbySearchAreaStale, setIsNearbySearchAreaStale] = useState(false);
+  const [isNearbyLoading, setIsNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState<string | null>(null);
+  const nearbySearchRequestIdRef = useRef(0);
+  const nearbySearchAreaVersionRef = useRef(0);
+  const hasNearbySearchRunRef = useRef(false);
   
   // Debounce wishlist search
   useEffect(() => {
@@ -719,7 +783,7 @@ const TripPlanner = () => {
     enabled: !!tripId,
   });
 
-  const wishlistItems = wishlistData?.content || [];
+  const wishlistItems = useMemo(() => wishlistData?.content ?? [], [wishlistData?.content]);
 
   const availableWishlistTypeFilters = useMemo(() => {
     const keys = new Set<string>();
@@ -782,12 +846,20 @@ const TripPlanner = () => {
     [selectedPlacePanel, wishlistItems],
   );
 
+  const selectedNearbyPlace = useMemo(
+    () => selectedPlacePanel?.mode === "nearby"
+      ? nearbyResults.find((place) => place.externalPlaceId === selectedPlacePanel.externalPlaceId) ?? null
+      : null,
+    [nearbyResults, selectedPlacePanel],
+  );
+
   const selectedPlacePanelPreview = useMemo<PlaceDetailPanelPlace | null>(() => {
     if (selectedPlacePanel?.mode === "itinerary" && selectedItineraryPlace) {
       return {
         mode: "itinerary",
         name: selectedItineraryPlace.name,
         address: selectedItineraryPlace.location?.address,
+        visitDay: selectedItineraryPlace.visitDay,
         time: selectedItineraryPlace.time,
         memo: selectedItineraryPlace.memo,
         placeTypeSummary: selectedItineraryPlace.placeTypeSummary,
@@ -803,23 +875,37 @@ const TripPlanner = () => {
         name: selectedWishlistPlace.name,
         address: selectedWishlistPlace.address,
         adderNickname: selectedWishlistPlace.adder.nickname,
+        adderAvatar: selectedWishlistPlace.adder.avatar,
         placeTypeSummary: selectedWishlistPlace.placeTypeSummary,
         normalizedCategoryKey: selectedWishlistPlace.normalizedCategoryKey,
         placeDetailSummary: selectedWishlistPlace.placeDetailSummary,
       };
     }
 
+    if (selectedPlacePanel?.mode === "nearby" && selectedNearbyPlace) {
+      return {
+        mode: "nearby",
+        name: selectedNearbyPlace.placeName,
+        address: selectedNearbyPlace.address,
+        placeTypeSummary: selectedNearbyPlace.placeTypeSummary,
+        normalizedCategoryKey: selectedNearbyPlace.normalizedCategoryKey,
+        placeDetailSummary: selectedNearbyPlace.placeDetailSummary,
+      };
+    }
+
     return null;
-  }, [selectedItineraryPlace, selectedPlacePanel, selectedWishlistPlace]);
+  }, [selectedItineraryPlace, selectedNearbyPlace, selectedPlacePanel, selectedWishlistPlace]);
+
+  const selectedPlaceDetailPlaceId = selectedPlacePanel?.placeId ?? null;
 
   const {
     data: selectedPlaceDetail,
     isLoading: isLoadingSelectedPlaceDetail,
     isError: isSelectedPlaceDetailError,
   } = useQuery({
-    queryKey: ["place-detail-panel", selectedPlacePanel?.placeId ?? null],
-    queryFn: () => placesApi.getPlaceDetail(selectedPlacePanel!.placeId),
-    enabled: !!selectedPlacePanel?.placeId,
+    queryKey: ["place-detail-panel", selectedPlaceDetailPlaceId],
+    queryFn: () => placesApi.getPlaceDetail(selectedPlaceDetailPlaceId!),
+    enabled: selectedPlaceDetailPlaceId != null,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -838,9 +924,71 @@ const TripPlanner = () => {
     return baseDate.toISOString().slice(0, 10);
   }, [daySections, tripDetail?.startDate]);
 
-  const closeSelectedPlacePanel = useCallback(() => {
+  const openDesktopWishlistPanel = useCallback(() => {
+    setDesktopPrimaryPanel("itinerary");
+    setIsDesktopItineraryCollapsed(false);
+    setDesktopSecondaryPanel("wishlist");
     setSelectedPlacePanel(null);
   }, []);
+
+  const openDesktopWishlistMainPanel = useCallback(() => {
+    setDesktopPrimaryPanel("wishlist");
+    setIsDesktopItineraryCollapsed(false);
+    setDesktopSecondaryPanel(null);
+    setSelectedPlacePanel(null);
+  }, []);
+
+  const openDesktopNearbyPanel = useCallback(() => {
+    setDesktopPrimaryPanel("nearby");
+    setIsDesktopItineraryCollapsed(false);
+  }, []);
+
+  const clearDesktopPlaceDetailPanel = useCallback(() => {
+    setDesktopSecondaryPanel((current) => current === "placeDetail" ? null : current);
+  }, []);
+
+  const closeDesktopPanelStack = useCallback(() => {
+    setIsDesktopItineraryCollapsed(true);
+    setDesktopSecondaryPanel(null);
+    setSelectedPlacePanel(null);
+  }, []);
+
+  const toggleDesktopItineraryPanel = useCallback(() => {
+    if (isDesktopItineraryCollapsed || desktopPrimaryPanel !== "itinerary") {
+      setDesktopPrimaryPanel("itinerary");
+      setIsDesktopItineraryCollapsed(false);
+      return;
+    }
+
+    closeDesktopPanelStack();
+  }, [closeDesktopPanelStack, desktopPrimaryPanel, isDesktopItineraryCollapsed]);
+
+  const toggleDesktopWishlistPanel = useCallback(() => {
+    if (!isDesktopItineraryCollapsed && desktopPrimaryPanel === "wishlist") {
+      closeDesktopPanelStack();
+      return;
+    }
+
+    if (!isDesktopItineraryCollapsed && desktopPrimaryPanel === "itinerary") {
+      if (desktopSecondaryPanel === "wishlist") {
+        setDesktopSecondaryPanel(null);
+        setSelectedPlacePanel(null);
+        return;
+      }
+
+      openDesktopWishlistPanel();
+      return;
+    }
+
+    openDesktopWishlistMainPanel();
+  }, [
+    closeDesktopPanelStack,
+    desktopPrimaryPanel,
+    desktopSecondaryPanel,
+    isDesktopItineraryCollapsed,
+    openDesktopWishlistMainPanel,
+    openDesktopWishlistPanel,
+  ]);
 
   const openItineraryPlacePanel = useCallback((item: ItineraryResponse, options?: { toggleIfSame?: boolean }) => {
     const nextSelection = toItineraryPanelSelection(item);
@@ -848,20 +996,26 @@ const TripPlanner = () => {
       return;
     }
 
+    const isSameSelection = selectedPlacePanel?.mode === "itinerary" && selectedPlacePanel.itineraryId === item.itineraryId;
+    if (options?.toggleIfSame && isSameSelection) {
+      setSelectedPlacePanel(null);
+      if (!isMobile) {
+        setDesktopSecondaryPanel(null);
+      }
+      return;
+    }
+
     if (isMobile) {
       setIsItineraryDrawerOpen(false);
       setIsWishlistDrawerOpen(false);
+    } else {
+      setDesktopPrimaryPanel("itinerary");
+      setIsDesktopItineraryCollapsed(false);
+      setDesktopSecondaryPanel("placeDetail");
     }
 
-    setSelectedPlacePanel((previous) => {
-      const isSameSelection = previous?.mode === "itinerary" && previous.itineraryId === item.itineraryId;
-      if (options?.toggleIfSame && isSameSelection) {
-        return null;
-      }
-
-      return nextSelection;
-    });
-  }, [isMobile]);
+    setSelectedPlacePanel(nextSelection);
+  }, [isMobile, selectedPlacePanel]);
 
   const openWishlistPlacePanel = useCallback((item: WishlistItem, options?: { toggleIfSame?: boolean }) => {
     if (!item.placeId) {
@@ -869,20 +1023,30 @@ const TripPlanner = () => {
     }
     const nextSelection = toWishlistPanelSelection(item);
 
+    const isSameSelection = selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === item.wishlistItemId;
+    if (options?.toggleIfSame && isSameSelection) {
+      setSelectedPlacePanel(null);
+      if (!isMobile) {
+        setDesktopSecondaryPanel(null);
+      }
+      return;
+    }
+
     if (isMobile) {
       setIsItineraryDrawerOpen(false);
       setIsWishlistDrawerOpen(false);
+    } else {
+      setIsDesktopItineraryCollapsed(false);
+      setDesktopSecondaryPanel("placeDetail");
     }
 
-    setSelectedPlacePanel((previous) => {
-      const isSameSelection = previous?.mode === "wishlist" && previous.wishlistItemId === item.wishlistItemId;
-      if (options?.toggleIfSame && isSameSelection) {
-        return null;
-      }
+    setSelectedPlacePanel(nextSelection);
+  }, [isMobile, selectedPlacePanel]);
 
-      return nextSelection;
-    });
-  }, [isMobile]);
+  const closeSelectedPlacePanel = useCallback(() => {
+    setSelectedPlacePanel(null);
+    clearDesktopPlaceDetailPanel();
+  }, [clearDesktopPlaceDetailPanel]);
 
   useEffect(() => {
     if (!selectedPlacePanel) {
@@ -891,14 +1055,14 @@ const TripPlanner = () => {
 
     if (selectedPlacePanel.mode === "itinerary" && selectedPlacePanel.itineraryId != null) {
       mapRef.current?.focusItineraryMarker(selectedPlacePanel.itineraryId, {
-        offsetForPanel: !isMobile,
+        offsetForPanel: false,
       });
       return;
     }
 
     if (selectedPlacePanel.mode === "wishlist" && selectedPlacePanel.wishlistItemId != null) {
       mapRef.current?.focusWishlistMarker(selectedPlacePanel.wishlistItemId, {
-        offsetForPanel: !isMobile,
+        offsetForPanel: false,
       });
     }
   }, [isMobile, selectedPlacePanel]);
@@ -906,19 +1070,133 @@ const TripPlanner = () => {
   useEffect(() => {
     if (selectedPlacePanel?.mode === "itinerary" && !selectedItineraryPlace) {
       setSelectedPlacePanel(null);
+      clearDesktopPlaceDetailPanel();
       return;
     }
 
     if (selectedPlacePanel?.mode === "wishlist" && !selectedWishlistPlace) {
       setSelectedPlacePanel(null);
+      clearDesktopPlaceDetailPanel();
     }
-  }, [selectedItineraryPlace, selectedPlacePanel, selectedWishlistPlace]);
+  }, [clearDesktopPlaceDetailPanel, selectedItineraryPlace, selectedPlacePanel, selectedWishlistPlace]);
 
   useEffect(() => {
     if (selectedPlacePanel?.mode === "itinerary" && selectedItineraryPlace && selectedItineraryPlace.visitDay !== selectedDay) {
       setSelectedPlacePanel(null);
+      clearDesktopPlaceDetailPanel();
     }
-  }, [selectedDay, selectedItineraryPlace, selectedPlacePanel]);
+  }, [clearDesktopPlaceDetailPanel, selectedDay, selectedItineraryPlace, selectedPlacePanel]);
+
+  const clearNearbyResults = useCallback(() => {
+    nearbySearchRequestIdRef.current += 1;
+    setNearbyResults([]);
+    setSelectedNearbyPlaceExternalId(null);
+    setSelectedPlacePanel(null);
+    hasNearbySearchRunRef.current = false;
+    setIsNearbySearchAreaStale(false);
+    setNearbyError(null);
+    setDesktopSecondaryPanel(null);
+    setDesktopPrimaryPanel((current) => current === "nearby" ? "itinerary" : current);
+  }, []);
+
+  const handleSearchNearby = useCallback(async (overrides?: {
+    category?: NearbyPlaceCategory;
+  }) => {
+    const searchArea = mapRef.current?.getSearchArea({
+      visibleLeftInsetPx: isMobile
+        ? 0
+        : getDesktopVisibleMapLeftInsetPx(DESKTOP_ITINERARY_PANEL_WIDTH),
+    });
+    if (!searchArea) {
+      if (!isMobile) {
+        openDesktopNearbyPanel();
+      }
+      setNearbyError("지도가 준비된 뒤 다시 시도해주세요.");
+      return;
+    }
+
+    const requestId = nearbySearchRequestIdRef.current + 1;
+    nearbySearchRequestIdRef.current = requestId;
+    const searchAreaVersion = nearbySearchAreaVersionRef.current;
+    const category = overrides?.category ?? selectedNearbyCategory;
+    setNearbyRadiusMeters(searchArea.radiusMeters);
+    if (!isMobile) {
+      openDesktopNearbyPanel();
+    }
+
+    setIsNearbyLoading(true);
+    setNearbyError(null);
+    setNearbyResults([]);
+    setSelectedNearbyPlaceExternalId(null);
+    setSelectedPlacePanel(null);
+    setDesktopSecondaryPanel(null);
+    hasNearbySearchRunRef.current = true;
+    setIsNearbySearchAreaStale(false);
+
+    try {
+      const region = getCountryOptionByCode2(tripDetail?.country)?.code2 ?? tripDetail?.country;
+      const results = await placesApi.searchNearby({
+        ...searchArea,
+        maxResultCount: 20,
+        category,
+        language: "ko",
+        region,
+      });
+      if (nearbySearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      setNearbyResults(results);
+      setIsNearbySearchAreaStale(nearbySearchAreaVersionRef.current !== searchAreaVersion);
+    } catch (error) {
+      if (nearbySearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      setNearbyError(readApiErrorMessage(error, "주변 장소를 불러오지 못했습니다."));
+    } finally {
+      if (nearbySearchRequestIdRef.current === requestId) {
+        setIsNearbyLoading(false);
+      }
+    }
+  }, [isMobile, openDesktopNearbyPanel, selectedNearbyCategory, tripDetail?.country]);
+
+  const handleNearbyCategoryChange = useCallback((category: NearbyPlaceCategory) => {
+    setSelectedNearbyCategory(category);
+    void handleSearchNearby({ category });
+  }, [handleSearchNearby]);
+
+  const handleNearbySearchAreaChange = useCallback(() => {
+    const searchArea = mapRef.current?.getSearchArea();
+    if (!searchArea) {
+      return;
+    }
+
+    nearbySearchAreaVersionRef.current += 1;
+    setNearbyRadiusMeters(searchArea.radiusMeters);
+    if (hasNearbySearchRunRef.current) {
+      setIsNearbySearchAreaStale(true);
+    }
+  }, []);
+
+  const handleSelectNearbyPlace = useCallback((place: PlaceSearchResult) => {
+    setSelectedNearbyPlaceExternalId(place.externalPlaceId);
+    setSelectedPlacePanel(toNearbyPanelSelection(place));
+    mapRef.current?.focusNearbyMarker(place.externalPlaceId, {
+      offsetForPanel: false,
+      visibleLeftInsetPx: isMobile
+        ? 0
+        : getDesktopVisibleMapLeftInsetPx(
+          DESKTOP_ITINERARY_PANEL_WIDTH + DESKTOP_PANEL_GAP + DESKTOP_SECONDARY_PANEL_WIDTH,
+        ),
+    });
+    if (!isMobile) {
+      openDesktopNearbyPanel();
+      setDesktopSecondaryPanel("placeDetail");
+    }
+  }, [isMobile, openDesktopNearbyPanel]);
+
+  const handleOpenGooglePoiInGoogleMaps = useCallback((place: GooglePoiSelection) => {
+    openGoogleMaps(getGoogleMapsPlaceUrl(place.externalPlaceId, place.latitude, place.longitude));
+  }, []);
 
   // Directions query
   const { data: directionsData = [] } = useQuery({
@@ -1021,6 +1299,7 @@ const TripPlanner = () => {
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
       if (selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === wishlistItemId) {
         setSelectedPlacePanel(null);
+        clearDesktopPlaceDetailPanel();
       }
       toast({
         title: "삭제됨",
@@ -1141,6 +1420,55 @@ const TripPlanner = () => {
     return createdItem;
   }, [queryClient, toast, tripId]);
 
+  const handleAddGooglePoiToItinerary = useCallback(async (place: GooglePoiSelection) => {
+    if (!tripId || googlePoiAction) {
+      return;
+    }
+
+    setGooglePoiAction("itinerary");
+    try {
+      const resolvedPlace = await placesApi.resolveExternalPlace(place.externalPlaceId);
+      await createItineraryAndSync({
+        visitDay: selectedDay,
+        placeId: resolvedPlace.placeId,
+        successDescription: `${resolvedPlace.placeName}이(가) Day ${selectedDay} 일정에 추가되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "추가 실패",
+        description: readApiErrorMessage(error, "Google 장소를 일정에 추가하는 중 오류가 발생했습니다."),
+        variant: "destructive",
+      });
+    } finally {
+      setGooglePoiAction(null);
+    }
+  }, [createItineraryAndSync, googlePoiAction, selectedDay, toast, tripId]);
+
+  const handleAddGooglePoiToWishlist = useCallback(async (place: GooglePoiSelection) => {
+    if (!tripId || googlePoiAction) {
+      return;
+    }
+
+    setGooglePoiAction("wishlist");
+    try {
+      const resolvedPlace = await placesApi.resolveExternalPlace(place.externalPlaceId);
+      const item = await wishlistApi.addWishlistFromPlace(Number(tripId), resolvedPlace.placeId);
+      await queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
+      toast({
+        title: "위시리스트에 추가됨",
+        description: `${item.name}이(가) 추가되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "추가 실패",
+        description: readApiErrorMessage(error, "Google 장소를 위시리스트에 추가하는 중 오류가 발생했습니다."),
+        variant: "destructive",
+      });
+    } finally {
+      setGooglePoiAction(null);
+    }
+  }, [googlePoiAction, queryClient, toast, tripId]);
+
   const handleAddWishlistToItinerary = useCallback(async (wishlistItem: WishlistItem, visitDay: number) => {
     const createdItem = await createItineraryAndSync({
       visitDay,
@@ -1159,8 +1487,9 @@ const TripPlanner = () => {
 
     if (!createdItem && selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === wishlistItem.wishlistItemId) {
       setSelectedPlacePanel(null);
+      clearDesktopPlaceDetailPanel();
     }
-  }, [createItineraryAndSync, selectedPlacePanel]);
+  }, [clearDesktopPlaceDetailPanel, createItineraryAndSync, selectedPlacePanel]);
 
   // Update itinerary
   const updateItineraryMutation = useMutation({
@@ -1203,6 +1532,7 @@ const TripPlanner = () => {
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.directions(tripId ?? "") });
       if (selectedPlacePanel?.mode === "itinerary" && selectedPlacePanel.itineraryId === variables.itemId) {
         setSelectedPlacePanel(null);
+        clearDesktopPlaceDetailPanel();
       }
       toast({
         title: "삭제 완료",
@@ -1219,18 +1549,18 @@ const TripPlanner = () => {
   });
 
   // Delete itinerary from map
-  const handleDeleteItineraryFromMap = (itineraryId: number, visitDay: number) => {
+  const handleDeleteItineraryFromMap = useCallback((itineraryId: number, visitDay: number) => {
     if (window.confirm('이 일정을 삭제하시겠습니까?')) {
       deleteItineraryMutation.mutate({ visitDay, itemId: itineraryId });
     }
-  };
+  }, [deleteItineraryMutation]);
 
   // Delete wishlist from map
-  const handleDeleteWishlistFromMap = (wishlistItemId: number) => {
+  const handleDeleteWishlistFromMap = useCallback((wishlistItemId: number) => {
     if (window.confirm('위시리스트에서 삭제하시겠습니까?')) {
       deleteWishlistMutation.mutate(wishlistItemId);
     }
-  };
+  }, [deleteWishlistMutation]);
 
   const handleOpenSelectedPlaceInGoogleMaps = useCallback(() => {
     if (selectedPlaceDetail?.googleMapsUri) {
@@ -1256,7 +1586,7 @@ const TripPlanner = () => {
     if (selectedPlacePanel.mode === "wishlist" && selectedPlacePanel.wishlistItemId != null) {
       handleDeleteWishlistFromMap(selectedPlacePanel.wishlistItemId);
     }
-  }, [selectedPlacePanel]);
+  }, [handleDeleteItineraryFromMap, handleDeleteWishlistFromMap, selectedPlacePanel]);
 
   // Update itinerary order
   const updateItineraryOrderMutation = useMutation({
@@ -1799,168 +2129,573 @@ const TripPlanner = () => {
     });
   };
 
+  const isDesktopPrimaryPanelOpen = !isDesktopItineraryCollapsed;
+  const isDesktopItineraryMainPanelOpen = isDesktopPrimaryPanelOpen && desktopPrimaryPanel === "itinerary";
+  const isDesktopWishlistMainPanelOpen = isDesktopPrimaryPanelOpen && desktopPrimaryPanel === "wishlist";
+  const isDesktopNearbyMainPanelOpen = isDesktopPrimaryPanelOpen && desktopPrimaryPanel === "nearby";
+  const isDesktopWishlistPanelOpen = desktopSecondaryPanel === "wishlist";
+  const isDesktopPlaceDetailPanelOpen = desktopSecondaryPanel === "placeDetail" && !!selectedPlacePanel;
+  const hasDesktopSecondaryPanel = !isMobile
+    && isDesktopPrimaryPanelOpen
+    && (isDesktopWishlistPanelOpen || isDesktopPlaceDetailPanelOpen);
+  const selectedNearbyCategoryOption = NEARBY_CATEGORY_OPTIONS.find((option) => option.value === selectedNearbyCategory);
+  const desktopPrimaryPanelLeft = DESKTOP_PRIMARY_PANEL_LEFT;
+  const desktopSecondaryPanelLeft = desktopPrimaryPanelLeft + DESKTOP_ITINERARY_PANEL_WIDTH + DESKTOP_PANEL_GAP;
+  const desktopPanelStackWidth = isDesktopItineraryCollapsed
+    ? 0
+    : DESKTOP_ITINERARY_PANEL_WIDTH + (hasDesktopSecondaryPanel ? DESKTOP_PANEL_GAP + DESKTOP_SECONDARY_PANEL_WIDTH : 0);
+  const desktopMapVisibleLeftInsetPx = !isMobile ? getDesktopVisibleMapLeftInsetPx(desktopPanelStackWidth) : 0;
+  const shouldShowDesktopPanelCloseButton = !isMobile && desktopPanelStackWidth > 0;
+  const desktopPanelCloseButtonLeft = desktopPrimaryPanelLeft + desktopPanelStackWidth - 1;
+  const desktopNearbyControlsLeft = desktopPrimaryPanelLeft
+    + desktopPanelStackWidth
+    + (desktopPanelStackWidth > 0 ? DESKTOP_PANEL_GAP : 0);
+  const desktopNearbyControlsMaxWidth = `calc(100vw - ${desktopNearbyControlsLeft + DESKTOP_PANEL_MARGIN}px)`;
+  const renderDesktopWishlistPanel = ({
+    className,
+    titleClassName = "text-lg",
+    onClose,
+  }: {
+    className: string;
+    titleClassName?: string;
+    onClose: () => void;
+  }) => (
+    <Card className={className}>
+      <CardHeader className="flex-shrink-0 border-b p-4">
+        <CardTitle className={`flex items-center justify-between ${titleClassName}`}>
+          <div className="flex items-center gap-2">
+            <span>위시리스트</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="text-muted-foreground hover:text-foreground">
+                  <HelpCircle className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                <p>위시리스트 항목을 일정 카드로 드래그하여 일정에 추가할 수 있습니다</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8"
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">위시리스트 닫기</span>
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 space-y-3 overflow-y-auto p-5 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="relative">
+          <Input
+            placeholder="내 위시리스트 검색..."
+            value={wishlistSearchInput}
+            onChange={(e) => setWishlistSearchInput(e.target.value)}
+            className="h-9 text-sm"
+          />
+        </div>
+        {availableWishlistTypeFilters.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {availableWishlistTypeFilters.map((filterKey) => (
+              <Button
+                key={filterKey}
+                type="button"
+                size="sm"
+                variant={selectedPlaceTypeFilter === filterKey ? "default" : "outline"}
+                onClick={() => setSelectedPlaceTypeFilter(filterKey)}
+                className="h-8 rounded-full px-3"
+              >
+                {filterKey === "ALL" ? "전체" : getPlaceTypeLabelFromKey(filterKey)}
+              </Button>
+            ))}
+          </div>
+        )}
+        <Button
+          onClick={() => setShowPlaceSearchModal(true)}
+          className="w-full"
+          size="sm"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          새로운 장소 추가
+        </Button>
+        {filteredWishlistItems.map((item) => (
+          <div
+            key={item.wishlistItemId}
+            draggable
+            onDragStart={() => handleDragStart(item)}
+            onDragEnd={handleDragEnd}
+            className={`p-3 bg-gradient-subtle rounded-lg border transition-all duration-200 cursor-pointer ${
+              draggedItem?.wishlistItemId === item.wishlistItemId
+                ? 'opacity-50 scale-95'
+                : 'hover:shadow-soft hover:scale-102'
+            }`}
+            onClick={() => {
+              openWishlistPlacePanel(item);
+            }}
+          >
+            <div className="flex-col items-start justify-between gap-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Avatar className="h-6 w-6 border">
+                  <AvatarImage
+                    className="object-cover"
+                    src={item.adder.avatar || undefined}
+                    alt={item.adder.nickname} />
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {item.adder.nickname.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs text-muted-foreground">{item.adder.nickname}</span>
+              </div>
+              <div className="flex items-start gap-3">
+                {getPlacePhotoUrl(item.photoHint) && (
+                  <img
+                    src={getPlacePhotoUrl(item.photoHint) || undefined}
+                    alt={item.name}
+                    className="h-14 w-14 rounded-lg object-cover border shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <h5 className="font-medium text-foreground text-sm mb-1 truncate">
+                    {item.name}
+                  </h5>
+                  {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey) && (
+                    <div className="mb-1">
+                      <Badge variant="secondary" className="text-[10px] font-medium">
+                        {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey)}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="text-xs text-muted-foreground">
+                    <p className="truncate">{item.address || "주소 정보 없음"}</p>
+                    {typeof item.placeDetailSummary?.rating === "number" && (
+                      <p className="truncate mt-1">평점 {item.placeDetailSummary.rating.toFixed(1)}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-1 flex-shrink-0 justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const url = getGoogleMapsSearchUrl(item.name);
+                    openGoogleMaps(url);
+                  }}
+                  title="구글 맵에서 보기"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                    >
+                      <MoveRight className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                      날짜로 이동
+                    </div>
+                    <DropdownMenuSeparator />
+                    <div className="overflow-auto max-h-[20vh]">
+                      {daySections
+                        .map(daySection => (
+                          <DropdownMenuItem
+                            key={daySection.visitDay}
+                            onClick={() => {
+                              void createItineraryAndSync({
+                                visitDay: daySection.visitDay,
+                                placeId: Number(item.placeId) || null,
+                                successDescription: "위시리스트에서 일정으로 추가되었습니다.",
+                              });
+                            }}
+                          >
+                            <span>{daySection.name} (Day {daySection.day})</span>
+                          </DropdownMenuItem>
+                        ))}
+                      {daySections.length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          날짜를 선택하세요
+                        </div>
+                      )}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteWishlistMutation.mutate(item.wishlistItemId);
+                  }}
+                  className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {filteredWishlistItems.length === 0 && (
+          <div className="text-center text-muted-foreground py-8">
+            <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-base">위시리스트가 비어있습니다</p>
+            <p className="text-xs">장소를 추가해보세요!</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const renderDesktopNearbyPanel = ({
+    className,
+    titleClassName = "text-lg",
+    onClose,
+  }: {
+    className: string;
+    titleClassName?: string;
+    onClose: () => void;
+  }) => (
+    <Card className={className}>
+      <CardHeader className="flex-shrink-0 border-b p-4">
+        <CardTitle className={`flex items-center justify-between gap-3 ${titleClassName}`}>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary" />
+              <span>주변 결과</span>
+            </div>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">
+              {isNearbyLoading
+                ? "검색 중"
+                : `${nearbyResults.length}곳 · 반경 ${formatNearbyRadiusLabel(nearbyRadiusMeters)}`}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Badge variant="secondary" className="text-xs">
+              {selectedNearbyCategoryOption?.label ?? "주변"}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">주변 결과 닫기</span>
+            </Button>
+          </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {isNearbySearchAreaStale && (
+          <Button
+            size="sm"
+            onClick={() => void handleSearchNearby()}
+            disabled={isNearbyLoading}
+            className="w-full"
+          >
+            <RotateCw className={`mr-2 h-4 w-4 ${isNearbyLoading ? "animate-spin" : ""}`} />
+            이 위치에서 검색
+          </Button>
+        )}
+
+        {nearbyError && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+            {nearbyError}
+          </div>
+        )}
+
+        {isNearbyLoading && nearbyResults.length === 0 && (
+          <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+            <Loader2 className="mb-2 h-5 w-5 animate-spin text-primary" />
+            주변 장소를 검색하고 있습니다
+          </div>
+        )}
+
+        {!isNearbyLoading && !nearbyError && nearbyResults.length === 0 && (
+          <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
+            <MapPin className="mb-2 h-5 w-5 text-primary" />
+            <p>검색 결과가 없습니다</p>
+            <p className="mt-1 text-xs">다른 카테고리나 위치에서 다시 검색해보세요</p>
+          </div>
+        )}
+
+        {nearbyResults.map((place) => {
+          const isSelected = place.externalPlaceId === selectedNearbyPlaceExternalId;
+          return (
+            <div
+              key={place.externalPlaceId}
+              className={`rounded-lg border p-3 transition ${
+                isSelected ? "border-primary bg-primary/5 shadow-sm" : "bg-white"
+              }`}
+            >
+              <button
+                type="button"
+                className="block w-full text-left"
+                onClick={() => handleSelectNearbyPlace(place)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{place.placeName}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{place.address}</p>
+                    {typeof place.placeDetailSummary?.rating === "number" && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        평점 {place.placeDetailSummary.rating.toFixed(1)}
+                      </p>
+                    )}
+                  </div>
+                  {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey) && (
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
+                      {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey)}
+                    </Badge>
+                  )}
+                </div>
+              </button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 w-full"
+                onClick={() => addWishlistMutation.mutate(place)}
+                disabled={addWishlistMutation.isPending}
+              >
+                {addWishlistMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                위시리스트에 추가
+              </Button>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+
+  const tripDateRangeLabel = `${new Date(tripDetail.startDate).toLocaleDateString()} - ${new Date(tripDetail.endDate).toLocaleDateString()}`;
+  const tripDestinationLabel = formatTripDestination(tripDetail.country, tripDetail.regionCode);
+
+  const renderLocalTimeClock = (compact = false) => currentTime ? (
+    <div className={`flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 text-primary shadow-sm ${compact ? "px-2.5 py-1.5" : "px-3 py-1.5"}`}>
+      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm">
+        <Clock className="h-3.5 w-3.5" />
+      </div>
+      <div className="flex min-w-0 flex-col leading-none">
+        <span className="text-[10px] font-medium text-primary/70">현지 시간</span>
+        <span className="mt-0.5 text-sm font-bold tabular-nums text-primary">{currentTime}</span>
+      </div>
+    </div>
+  ) : null;
+
+  const renderHeaderActions = (compact = false) => {
+    const labelClassName = compact ? "hidden" : "hidden xl:inline";
+    const actionButtonClassName = compact ? "h-9 w-9 rounded-full px-0" : "h-9 rounded-full px-3";
+
+    return (
+      <>
+        <Button
+          variant="outline"
+          onClick={() => setShowMembersModal(true)}
+          className={`border-primary text-primary hover:bg-primary hover:text-primary-foreground whitespace-nowrap ${actionButtonClassName}`}
+          size="sm"
+          aria-label="멤버 관리"
+        >
+          <Users className="h-4 w-4" />
+          <span className={labelClassName}>멤버 관리</span>
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setShowReviewModal(true)}
+          className={`border-primary text-primary hover:bg-primary hover:text-primary-foreground whitespace-nowrap ${actionButtonClassName}`}
+          size="sm"
+          aria-label="AI 분석"
+        >
+          <Sparkles className="h-4 w-4" />
+          <span className={labelClassName}>AI 분석</span>
+        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              onClick={() => setTotalSettlementModal(true)}
+              className={`border-accent text-accent hover:bg-accent hover:text-accent-foreground whitespace-nowrap ${actionButtonClassName}`}
+              size="sm"
+              aria-label="전체 정산"
+            >
+              <Calculator className="h-4 w-4" />
+              <span className={labelClassName}>전체 정산</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <p>일별로 나눠 정산하거나 전체 여행 기간의 정산을 한번에 확인할 수 있습니다</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className={`bg-gradient-primary hover:shadow-primary whitespace-nowrap ${actionButtonClassName}`}
+              onClick={handleGenerateInvite}
+              size="sm"
+              aria-label="친구 초대"
+            >
+              <Users className="h-4 w-4" />
+              <span className={labelClassName}>친구 초대</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <p>초대 링크를 복사하여 친구들과 여행을 함께 계획하세요</p>
+          </TooltipContent>
+        </Tooltip>
+      </>
+    );
+  };
+
   return (
     <div className="h-screen bg-gradient-subtle flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-soft">
-        <div className="container mx-auto px-4 md:px-6 py-3 md:py-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center space-x-2 md:space-x-4">
-              <Button 
-                variant="ghost" 
-                onClick={() => navigate("/")}
-                className="hover:bg-primary/10"
-                size="sm"
+      <header className="border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+        <div className="hidden h-16 w-full grid-cols-[minmax(220px,1fr)_minmax(280px,460px)_minmax(220px,1fr)] items-center gap-3 px-4 md:grid">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="flex min-w-0 items-center gap-2 rounded-full px-1.5 py-1 transition-colors hover:bg-primary/5"
+              aria-label="Tribe 홈으로 이동"
+            >
+              <img src="/tribe-logo.png" alt="Tribe Logo" className="h-9 w-9 shrink-0" />
+              <img src="/tribe-textlogo.png" alt="Tribe" className="h-5 min-w-0 shrink" />
+            </button>
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/")}
+              className="h-9 rounded-full px-3 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              size="sm"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden lg:inline">뒤로가기</span>
+            </Button>
+          </div>
+
+          <div className="min-w-0 text-center">
+            <h1 className="truncate text-lg font-bold leading-tight text-foreground">{tripDetail.title}</h1>
+            <div className="mt-1 flex min-w-0 items-center justify-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <Calendar className="h-3.5 w-3.5 text-primary" />
+                {tripDateRangeLabel}
+              </span>
+              <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="truncate">{tripDestinationLabel}</span>
+              </span>
+            </div>
+          </div>
+
+          <TooltipProvider>
+            <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {renderLocalTimeClock()}
+              <div
+                className="flex shrink-0 -space-x-2 transition-all duration-300"
+                onMouseEnter={() => setIsMembersHovered(true)}
+                onMouseLeave={() => setIsMembersHovered(false)}
               >
-                <ArrowLeft className="w-4 h-4 md:mr-2" />
-                <span className="hidden md:inline">뒤로가기</span>
-              </Button>
-              <div className="flex items-center gap-3">
-                <div>
-                  <h1 className="text-lg md:text-2xl font-bold text-foreground">{tripDetail.title}</h1>
-                  <p className="text-xs md:text-sm text-muted-foreground">
-                    {new Date(tripDetail.startDate).toLocaleDateString()} - {new Date(tripDetail.endDate).toLocaleDateString()}
-                  </p>
-                  <p className="text-xs md:text-sm text-muted-foreground">
-                    {formatTripDestination(tripDetail.country, tripDetail.regionCode)}
-                  </p>
-                </div>
-                {/* Current time display */}
-                {currentTime && (
-                  <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-gradient-primary rounded-xl shadow-primary backdrop-blur-sm border border-white/20 transition-all duration-300 hover:scale-105 hover:shadow-lg">
-                    <Clock className="w-5 h-5 text-white animate-pulse" />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-medium text-white/80 leading-none mb-0.5">현지 시간</span>
-                      <span className="text-base font-bold text-white leading-none">{currentTime}</span>
-                    </div>
-                  </div>
+                {(isMembersHovered || tripDetail.members.length <= 3
+                  ? tripDetail.members
+                  : tripDetail.members.slice(0, 3)
+                ).map((member) => (
+                  <Tooltip key={member.tripMemberId || member.nickname}>
+                    <TooltipTrigger asChild>
+                      <Avatar className="h-8 w-8 cursor-pointer border-2 border-white transition-transform hover:z-10 hover:scale-110">
+                        <AvatarImage
+                          src={member.avatar || undefined}
+                          alt={member.nickname}
+                          className="object-cover"
+                        />
+                        <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+                          {member.nickname.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{member.nickname}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+
+                {!isMembersHovered && tripDetail.members.length > 3 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-primary/10 text-xs font-semibold text-primary transition-all hover:bg-primary/20">
+                        +{tripDetail.members.length - 3}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>나머지 {tripDetail.members.length - 3}명 보기</p>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
-              {/* Member Avatars */}
-              <TooltipProvider>
-                <div 
-                  className="flex -space-x-2 transition-all duration-300"
-                  onMouseEnter={() => setIsMembersHovered(true)}
-                  onMouseLeave={() => setIsMembersHovered(false)}
-                >
-                  {(isMembersHovered || tripDetail.members.length <= 3
-                    ? tripDetail.members 
-                    : tripDetail.members.slice(0, 3)
-                  ).map((member) => (
-                    <Tooltip key={member.tripMemberId || member.nickname}>
-                      <TooltipTrigger asChild>
-                        <Avatar className="border-2 border-white w-8 h-8 cursor-pointer hover:z-10 transition-transform hover:scale-110">
-                          <AvatarImage
-                              src={member.avatar || undefined}
-                              alt={member.nickname}
-                              className="object-cover"
-                          />
-                          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                            {member.nickname.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{member.nickname}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                  
-                  {/* "+N" badge when there are more than 3 members and not hovering */}
-                  {!isMembersHovered && tripDetail.members.length > 3 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 border-2 border-white text-xs font-semibold text-primary cursor-pointer hover:bg-primary/20 transition-colors transition-all">
-                          +{tripDetail.members.length - 3}
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>나머지 {tripDetail.members.length - 3}명 보기</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TooltipProvider>
+              {renderHeaderActions()}
             </div>
-            <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto md:pb-0">
-              <Button 
-                variant="outline" 
-                onClick={() => setShowMembersModal(true)}
-                className="border-primary text-primary hover:bg-primary hover:text-primary-foreground whitespace-nowrap"
-                size="sm"
-              >
-                <Users className="w-4 h-4 md:mr-2" />
-                <span className="sm:inline">멤버 관리</span>
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowReviewModal(true)}
-                className="border-primary text-primary hover:bg-primary hover:text-primary-foreground whitespace-nowrap"
-                size="sm"
-              >
-                <Sparkles className="w-4 h-4 md:mr-2" />
-                <span className="sm:inline">AI 분석</span>
-              </Button>
-              <div className="hidden md:flex items-center gap-1">
+          </TooltipProvider>
+        </div>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                        variant="outline"
-                        onClick={() => setTotalSettlementModal(true)}
-                        className="border-accent text-accent hover:bg-accent hover:text-accent-foreground whitespace-nowrap"
-                        size="sm"
-                    >
-                      <Calculator className="w-4 h-4 md:mr-2" />
-                      <span className="sm:inline">전체 정산</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p>일별로 나눠 정산하거나 전체 여행 기간의 정산을 한번에 확인할 수 있습니다</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => setTotalSettlementModal(true)}
-                className="md:hidden border-accent text-accent hover:bg-accent hover:text-accent-foreground whitespace-nowrap"
-                size="sm"
+        <div className="md:hidden">
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/")}
+                className="flex min-w-0 items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-primary/5"
+                aria-label="Tribe 홈으로 이동"
               >
-                <Calculator className="w-4 h-4 md:mr-2" />
-                <span className="sm:inline">전체 정산</span>
-              </Button>
-              <div className="hidden md:flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                        className="bg-gradient-primary hover:shadow-primary whitespace-nowrap"
-                        onClick={handleGenerateInvite}
-                        size="sm"
-                    >
-                      <Users className="w-4 h-4 md:mr-2" />
-                      <span className="sm:inline">친구 초대</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p>초대 링크를 복사하여 친구들과 여행을 함께 계획하세요</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Button 
-                className="md:hidden bg-gradient-primary hover:shadow-primary whitespace-nowrap"
-                onClick={handleGenerateInvite}
+                <img src="/tribe-logo.png" alt="Tribe Logo" className="h-8 w-8 shrink-0" />
+                <img src="/tribe-textlogo.png" alt="Tribe" className="h-5 min-w-0 shrink" />
+              </button>
+              <Button
+                variant="ghost"
+                onClick={() => navigate("/")}
+                className="h-9 w-9 rounded-full px-0 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                 size="sm"
+                aria-label="뒤로가기"
               >
-                <Users className="w-4 h-4 md:mr-2" />
-                <span className="sm:inline">친구 초대</span>
+                <ArrowLeft className="h-4 w-4" />
               </Button>
             </div>
+            <TooltipProvider>
+              <div className="flex min-w-0 items-center justify-end gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {renderHeaderActions(true)}
+              </div>
+            </TooltipProvider>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-3 py-2">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-bold leading-tight text-foreground">{tripDetail.title}</h1>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-tight text-muted-foreground">
+                <span className="inline-flex shrink-0 items-center gap-1">
+                  <Calendar className="h-3 w-3 text-primary" />
+                  {tripDateRangeLabel}
+                </span>
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <MapPin className="h-3 w-3 shrink-0 text-primary" />
+                  <span className="truncate">{tripDestinationLabel}</span>
+                </span>
+              </div>
+            </div>
+            <div className="shrink-0">{renderLocalTimeClock(true)}</div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="relative flex flex-col md:flex-row w-full flex-1 min-h-0 overflow-hidden">
+      <main className="relative flex w-full flex-1 min-h-0 flex-col overflow-hidden md:block">
         {/* Mobile Drawer for Itinerary */}
         <Drawer open={isItineraryDrawerOpen} onOpenChange={(open) => {
           setIsItineraryDrawerOpen(open);
@@ -2097,9 +2832,80 @@ const TripPlanner = () => {
           </DrawerContent>
         </Drawer>
 
-        {/* Desktop Itinerary Panel - Fixed Left */}
-        <div className="hidden md:block md:w-96 md:flex-shrink-0 h-full">
-          <Card className="flex flex-col bg-white shadow-2xl border-2 h-full">
+        {/* Desktop Quick Menu */}
+        <nav className="absolute bottom-4 left-4 top-4 z-30 hidden md:flex" style={{ width: DESKTOP_QUICK_MENU_WIDTH }}>
+          <div className="flex h-full w-full flex-col items-center rounded-2xl border border-slate-200 bg-white/95 py-4 shadow-xl backdrop-blur">
+            <TooltipProvider>
+              <div className="flex flex-1 flex-col items-center gap-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleDesktopItineraryPanel}
+                      className={`flex w-14 flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-semibold transition ${
+                        isDesktopItineraryMainPanelOpen
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <Calendar className="h-5 w-5" />
+                      <span>일정</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">일정 패널 열기</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleDesktopWishlistPanel}
+                      className={`flex w-14 flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-semibold transition ${
+                        isDesktopWishlistMainPanelOpen || isDesktopWishlistPanelOpen
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <Star className="h-5 w-5" />
+                      <span>위시</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">위시리스트 열기</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setTotalSettlementModal(true)}
+                      className="flex w-14 flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    >
+                      <Calculator className="h-5 w-5" />
+                      <span>정산</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">전체 정산 열기</TooltipContent>
+                </Tooltip>
+              </div>
+
+            </TooltipProvider>
+          </div>
+        </nav>
+
+        {/* Desktop Itinerary Panel - Primary */}
+        <div
+          className="absolute bottom-4 top-4 z-20 hidden transition-[left,width] duration-300 ease-in-out md:block"
+          style={{
+            left: desktopPrimaryPanelLeft,
+            width: isDesktopItineraryCollapsed ? 0 : DESKTOP_ITINERARY_PANEL_WIDTH,
+          }}
+        >
+          <div className="h-full w-full overflow-hidden">
+            {desktopPrimaryPanel === "itinerary" ? (
+              <Card
+                className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur"
+                style={{ width: DESKTOP_ITINERARY_PANEL_WIDTH }}
+              >
             <CardHeader className="flex-shrink-0 p-4 md:ps-6 border-b">
               <CardTitle className="flex items-center justify-between text-base md:text-lg">
                 <div className="flex items-center gap-1">
@@ -2118,11 +2924,10 @@ const TripPlanner = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setIsWishlistOpen(!isWishlistOpen)}
+                  onClick={openDesktopWishlistPanel}
                   className="text-primary hover:bg-primary/10 gap-0 h-fit"
                 >
-                  <Star className="w-2 h-2" />
-                  <ChevronRight className="w-2 h-2" />
+                  <Star className="w-4 h-4" />
                 </Button>
               </CardTitle>
             </CardHeader>
@@ -2217,28 +3022,295 @@ const TripPlanner = () => {
                 })}
               </Tabs>
             </CardContent>
-          </Card>
+              </Card>
+            ) : desktopPrimaryPanel === "nearby" ? (
+              renderDesktopNearbyPanel({
+                className: "flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur",
+                titleClassName: "text-base md:text-lg",
+                onClose: closeDesktopPanelStack,
+              })
+            ) : (
+              renderDesktopWishlistPanel({
+                className: "flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur",
+                titleClassName: "text-base md:text-lg",
+                onClose: closeDesktopPanelStack,
+              })
+            )}
+          </div>
         </div>
 
+        {/* Desktop Secondary Panel - Wishlist or Place Detail */}
+        {hasDesktopSecondaryPanel && (
+          <div
+            className="absolute bottom-4 top-4 z-20 hidden transition-[left,width] duration-300 ease-in-out md:block"
+            style={{
+              left: desktopSecondaryPanelLeft,
+              width: DESKTOP_SECONDARY_PANEL_WIDTH,
+            }}
+          >
+            <div className="h-full w-full overflow-hidden">
+              <div
+                className="h-full overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur"
+                style={{ width: DESKTOP_SECONDARY_PANEL_WIDTH }}
+              >
+                {isDesktopWishlistPanelOpen && (
+                  <Card className="flex h-full flex-col rounded-none border-0 bg-transparent shadow-none">
+                    <CardHeader className="flex-shrink-0 border-b p-4">
+                      <CardTitle className="flex items-center justify-between text-lg">
+                        <div className="flex items-center gap-2">
+                          <span>위시리스트</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button className="text-muted-foreground hover:text-foreground">
+                                <HelpCircle className="w-4 h-4" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs">
+                              <p>위시리스트 항목을 일정 카드로 드래그하여 일정에 추가할 수 있습니다</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDesktopSecondaryPanel(null)}
+                          className="h-8 w-8"
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">위시리스트 닫기</span>
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 space-y-3 overflow-y-auto p-5 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                      <div className="relative">
+                        <Input
+                          placeholder="내 위시리스트 검색..."
+                          value={wishlistSearchInput}
+                          onChange={(e) => setWishlistSearchInput(e.target.value)}
+                          className="h-9 text-sm"
+                        />
+                      </div>
+                      {availableWishlistTypeFilters.length > 1 && (
+                        <div className="flex flex-wrap gap-2">
+                          {availableWishlistTypeFilters.map((filterKey) => (
+                            <Button
+                              key={filterKey}
+                              type="button"
+                              size="sm"
+                              variant={selectedPlaceTypeFilter === filterKey ? "default" : "outline"}
+                              onClick={() => setSelectedPlaceTypeFilter(filterKey)}
+                              className="h-8 rounded-full px-3"
+                            >
+                              {filterKey === "ALL" ? "전체" : getPlaceTypeLabelFromKey(filterKey)}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                      <Button
+                        onClick={() => setShowPlaceSearchModal(true)}
+                        className="w-full"
+                        size="sm"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        새로운 장소 추가
+                      </Button>
+                      {filteredWishlistItems.map((item) => (
+                        <div
+                          key={item.wishlistItemId}
+                          draggable
+                          onDragStart={() => handleDragStart(item)}
+                          onDragEnd={handleDragEnd}
+                          className={`p-3 bg-gradient-subtle rounded-lg border transition-all duration-200 cursor-pointer ${
+                            draggedItem?.wishlistItemId === item.wishlistItemId
+                              ? 'opacity-50 scale-95'
+                              : 'hover:shadow-soft hover:scale-102'
+                          }`}
+                          onClick={() => {
+                            openWishlistPlacePanel(item);
+                          }}
+                        >
+                          <div className="flex-col items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Avatar className="h-6 w-6 border">
+                                <AvatarImage
+                                  className="object-cover"
+                                  src={item.adder.avatar || undefined}
+                                  alt={item.adder.nickname} />
+                                <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                                  {item.adder.nickname.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs text-muted-foreground">{item.adder.nickname}</span>
+                            </div>
+                            <div className="flex items-start gap-3">
+                              {getPlacePhotoUrl(item.photoHint) && (
+                                <img
+                                  src={getPlacePhotoUrl(item.photoHint) || undefined}
+                                  alt={item.name}
+                                  className="h-14 w-14 rounded-lg object-cover border shrink-0"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <h5 className="font-medium text-foreground text-sm mb-1 truncate">
+                                  {item.name}
+                                </h5>
+                                {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey) && (
+                                  <div className="mb-1">
+                                    <Badge variant="secondary" className="text-[10px] font-medium">
+                                      {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey)}
+                                    </Badge>
+                                  </div>
+                                )}
+                                <div className="text-xs text-muted-foreground">
+                                  <p className="truncate">{item.address || "주소 정보 없음"}</p>
+                                  {typeof item.placeDetailSummary?.rating === "number" && (
+                                    <p className="truncate mt-1">평점 {item.placeDetailSummary.rating.toFixed(1)}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1 flex-shrink-0 justify-end">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = getGoogleMapsSearchUrl(item.name);
+                                  openGoogleMaps(url);
+                                }}
+                                title="구글 맵에서 보기"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <MoveRight className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                                    날짜로 이동
+                                  </div>
+                                  <DropdownMenuSeparator />
+                                  <div className="overflow-auto max-h-[20vh]">
+                                    {daySections
+                                      .map(daySection => (
+                                        <DropdownMenuItem
+                                          key={daySection.visitDay}
+                                          onClick={() => {
+                                            void createItineraryAndSync({
+                                              visitDay: daySection.visitDay,
+                                              placeId: Number(item.placeId) || null,
+                                              successDescription: "위시리스트에서 일정으로 추가되었습니다.",
+                                            });
+                                          }}
+                                        >
+                                          <span>{daySection.name} (Day {daySection.day})</span>
+                                        </DropdownMenuItem>
+                                      ))}
+                                    {daySections.length === 0 && (
+                                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                        날짜를 선택하세요
+                                      </div>
+                                    )}
+                                  </div>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteWishlistMutation.mutate(item.wishlistItemId);
+                                }}
+                                className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {filteredWishlistItems.length === 0 && (
+                        <div className="text-center text-muted-foreground py-8">
+                          <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-base">위시리스트가 비어있습니다</p>
+                          <p className="text-xs">장소를 추가해보세요!</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {isDesktopPlaceDetailPanelOpen && (
+                  <PlaceDetailPanel
+                    open={!!selectedPlacePanel}
+                    isMobile={false}
+                    desktopMode="inline"
+                    place={selectedPlacePanelPreview}
+                    detail={selectedPlaceDetail}
+                    isLoading={isLoadingSelectedPlaceDetail}
+                    isError={isSelectedPlaceDetailError}
+                    currentDay={selectedDay}
+                    availableDays={selectedPlaceDayOptions}
+                    onClose={closeSelectedPlacePanel}
+                    onOpenGoogleMaps={handleOpenSelectedPlaceInGoogleMaps}
+                    onDelete={handleDeleteSelectedPlacePanelItem}
+                    onAddToItinerary={selectedWishlistPlace ? (visitDay) => handleAddWishlistToItinerary(selectedWishlistPlace, visitDay) : undefined}
+                  />
+                )}
+
+              </div>
+            </div>
+          </div>
+        )}
+
+        {shouldShowDesktopPanelCloseButton && (
+          <button
+            type="button"
+            onClick={closeDesktopPanelStack}
+            className="absolute top-1/2 z-30 hidden h-14 w-8 -translate-y-1/2 items-center justify-center rounded-r-full border border-l-0 border-slate-200 bg-white text-slate-600 shadow-lg transition-[left,background-color,color,box-shadow] duration-300 ease-in-out hover:bg-slate-50 hover:text-slate-900 md:flex"
+            style={{ left: desktopPanelCloseButtonLeft }}
+            aria-label="열린 패널 모두 닫기"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+
         {/* Map - Right Side */}
-        <div className="relative flex-1 h-full min-h-[300px]">
+        <div className="relative h-full min-h-[300px] flex-1 md:absolute md:inset-0 md:min-h-0">
           <ItineraryMap
-            key={selectedDay}
             ref={mapRef}
             items={itineraryItems.filter(item => item.visitDay === selectedDay)}
             days={Array.from({ length: totalDays }, (_, index) => index + 1)}
             wishlistItems={wishlistItems}
+            nearbyPlaces={nearbyResults}
             tripCountry={tripDetail?.country}
             tripRegionCode={tripDetail?.regionCode}
             selectedItineraryId={selectedPlacePanel?.mode === "itinerary" ? selectedPlacePanel.itineraryId ?? null : null}
             selectedWishlistItemId={selectedPlacePanel?.mode === "wishlist" ? selectedPlacePanel.wishlistItemId ?? null : null}
-            panelOffsetPx={400}
+            selectedNearbyPlaceExternalId={selectedNearbyPlaceExternalId}
+            panelOffsetPx={0}
+            visibleLeftInsetPx={desktopMapVisibleLeftInsetPx}
             onSelectItineraryMarker={(item) => openItineraryPlacePanel(item, { toggleIfSame: true })}
             onSelectWishlistMarker={(item) => openWishlistPlacePanel(item, { toggleIfSame: true })}
+            onSelectNearbyPlace={handleSelectNearbyPlace}
+            onAddGooglePoiToItinerary={handleAddGooglePoiToItinerary}
+            onAddGooglePoiToWishlist={handleAddGooglePoiToWishlist}
+            isAddingGooglePoiToItinerary={googlePoiAction === "itinerary"}
+            isAddingGooglePoiToWishlist={googlePoiAction === "wishlist"}
+            onOpenGooglePoiInGoogleMaps={handleOpenGooglePoiInGoogleMaps}
+            onSearchAreaChange={handleNearbySearchAreaChange}
           />
 
           <PlaceDetailPanel
-            open={!!selectedPlacePanel}
+            open={isMobile && !!selectedPlacePanel}
             isMobile={isMobile}
             place={selectedPlacePanelPreview}
             detail={selectedPlaceDetail}
@@ -2251,6 +3323,138 @@ const TripPlanner = () => {
             onDelete={handleDeleteSelectedPlacePanelItem}
             onAddToItinerary={selectedWishlistPlace ? (visitDay) => handleAddWishlistToItinerary(selectedWishlistPlace, visitDay) : undefined}
           />
+
+          <div
+            className="absolute left-3 right-3 top-3 z-10 flex flex-col gap-2 md:right-auto md:top-4 md:items-start"
+            style={isMobile ? undefined : {
+              left: desktopNearbyControlsLeft,
+              maxWidth: desktopNearbyControlsMaxWidth,
+            }}
+          >
+            <div className="flex max-w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-fit md:max-w-[720px]">
+              {NEARBY_CATEGORY_OPTIONS.map((option) => {
+                const CategoryIcon = option.Icon;
+                const isActive = selectedNearbyCategory === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => handleNearbyCategoryChange(option.value)}
+                    className={`flex h-10 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold shadow-sm transition ${
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-white text-foreground hover:border-primary/50 hover:bg-primary/5"
+                    }`}
+                  >
+                    {isActive && isNearbyLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CategoryIcon className="h-4 w-4" />
+                    )}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex w-fit max-w-full items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearNearbyResults}
+                disabled={isNearbyLoading && nearbyResults.length === 0}
+                className="h-9 rounded-full px-3"
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">주변 결과 지우기</span>
+              </Button>
+            </div>
+
+            {nearbyError && !isDesktopNearbyMainPanelOpen && (
+              <p className="w-fit max-w-full rounded-full bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground shadow-lg">
+                {nearbyError}
+              </p>
+            )}
+          </div>
+
+          {isNearbySearchAreaStale && (
+            <div
+              className="pointer-events-none absolute bottom-6 left-3 right-3 z-20 flex justify-center md:bottom-8"
+              style={isMobile ? undefined : {
+                left: desktopNearbyControlsLeft,
+                right: DESKTOP_PANEL_MARGIN,
+              }}
+            >
+              <Button
+                size="sm"
+                onClick={() => void handleSearchNearby()}
+                disabled={isNearbyLoading}
+                className="pointer-events-auto h-10 rounded-full px-4 shadow-lg"
+              >
+                <RotateCw className={`mr-2 h-4 w-4 ${isNearbyLoading ? "animate-spin" : ""}`} />
+                이 위치에서 검색
+              </Button>
+            </div>
+          )}
+
+          {isMobile && nearbyResults.length > 0 && (
+            <Card className="absolute bottom-4 right-4 top-32 z-10 flex w-[min(calc(100%-2rem),380px)] flex-col overflow-hidden bg-white/95 shadow-lg backdrop-blur max-md:left-4 max-md:top-auto max-md:bottom-20 max-md:max-h-[48vh] max-md:w-auto">
+              <CardHeader className="flex-shrink-0 border-b p-3">
+                <CardTitle className="flex items-center justify-between gap-3 text-sm">
+                  <span>주변 결과 {nearbyResults.length}곳</span>
+                  <Badge variant="secondary" className="shrink-0">
+                    {selectedNearbyCategoryOption?.label ?? "주변"}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                {nearbyResults.map((place) => {
+                  const isSelected = place.externalPlaceId === selectedNearbyPlaceExternalId;
+                  return (
+                    <div
+                      key={place.externalPlaceId}
+                      className={`rounded-md border p-3 transition ${
+                        isSelected ? "border-primary bg-primary/5" : "bg-white"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="block w-full text-left"
+                        onClick={() => handleSelectNearbyPlace(place)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{place.placeName}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{place.address}</p>
+                          </div>
+                          {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey) && (
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">
+                              {getPlaceTypeLabel(place.placeTypeSummary, place.normalizedCategoryKey)}
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 w-full"
+                        onClick={() => addWishlistMutation.mutate(place)}
+                        disabled={addWishlistMutation.isPending}
+                      >
+                        {addWishlistMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Plus className="mr-2 h-4 w-4" />
+                        )}
+                        위시리스트에 추가
+                      </Button>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
           
           {/* Floating Button to Open Itinerary Drawer (Mobile Only) */}
           <Button
@@ -2451,194 +3655,6 @@ const TripPlanner = () => {
           </DrawerContent>
         </Drawer>
 
-        {/* Desktop Wishlist Panel - Slides from Itinerary Panel */}
-        <div className={`hidden md:block absolute left-96 top-0 bottom-0 h-full transition-all duration-300 ease-in-out overflow-hidden z-10 ${isWishlistOpen ? "w-80" : "w-0"}`}>
-          <div className="w-80 h-full">
-            <Card className="h-full flex flex-col bg-white shadow-2xl border-2">
-              <CardHeader className="flex-shrink-0 ps-6 p-4 border-b space-y-3">
-                <CardTitle className="flex items-center justify-between text-lg">
-                  <div className="flex items-center gap-2">
-                    <span>위시리스트</span>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button className="text-muted-foreground hover:text-foreground">
-                          <HelpCircle className="w-4 h-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p>위시리스트 항목을 왼쪽 일정 카드로 드래그하여 일정에 추가할 수 있습니다</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto space-y-3 p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                <div className="relative">
-                  <Input
-                      placeholder="내 위시리스트 검색..."
-                      value={wishlistSearchInput}
-                      onChange={(e) => setWishlistSearchInput(e.target.value)}
-                      className="h-9 text-sm"
-                  />
-                </div>
-                {availableWishlistTypeFilters.length > 1 && (
-                  <div className="flex flex-wrap gap-2">
-                    {availableWishlistTypeFilters.map((filterKey) => (
-                      <Button
-                        key={filterKey}
-                        type="button"
-                        size="sm"
-                        variant={selectedPlaceTypeFilter === filterKey ? "default" : "outline"}
-                        onClick={() => setSelectedPlaceTypeFilter(filterKey)}
-                        className="h-8 rounded-full px-3"
-                      >
-                        {filterKey === "ALL" ? "전체" : getPlaceTypeLabelFromKey(filterKey)}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                <Button
-                  onClick={() => setShowPlaceSearchModal(true)}
-                  className="w-full"
-                  size="sm"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  새로운 장소 추가
-                </Button>
-                {filteredWishlistItems.map((item) => (
-                  <div
-                    key={item.wishlistItemId}
-                    draggable
-                    onDragStart={() => handleDragStart(item)}
-                    onDragEnd={handleDragEnd}
-                    className={`p-3 bg-gradient-subtle rounded-lg border transition-all duration-200 cursor-pointer ${
-                      draggedItem?.wishlistItemId === item.wishlistItemId
-                        ? 'opacity-50 scale-95'
-                        : 'hover:shadow-soft hover:scale-102'
-                    }`}
-                    onClick={() => {
-                      openWishlistPlacePanel(item);
-                    }}
-                  >
-                    <div className="flex-col items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Avatar className="h-6 w-6 border">
-                          <AvatarImage
-                              className="object-cover"
-                              src={item.adder.avatar || undefined}
-                              alt={item.adder.nickname} />
-                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                            {item.adder.nickname.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-xs text-muted-foreground">{item.adder.nickname}</span>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        {getPlacePhotoUrl(item.photoHint) && (
-                          <img
-                            src={getPlacePhotoUrl(item.photoHint) || undefined}
-                            alt={item.name}
-                            className="h-14 w-14 rounded-lg object-cover border shrink-0"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-medium text-foreground text-sm mb-1 truncate">
-                            {item.name}
-                          </h5>
-                          {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey) && (
-                            <div className="mb-1">
-                              <Badge variant="secondary" className="text-[10px] font-medium">
-                                {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey)}
-                              </Badge>
-                            </div>
-                          )}
-                          <div className="text-xs text-muted-foreground">
-                            <p className="truncate">{item.address || "주소 정보 없음"}</p>
-                            {typeof item.placeDetailSummary?.rating === "number" && (
-                              <p className="truncate mt-1">평점 {item.placeDetailSummary.rating.toFixed(1)}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 flex-shrink-0 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const url = getGoogleMapsSearchUrl(item.name);
-                            openGoogleMaps(url);
-                          }}
-                          title="구글 맵에서 보기"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                            >
-                              <MoveRight className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                              날짜로 이동
-                            </div>
-                            <DropdownMenuSeparator />
-                            <div className="overflow-auto max-h-[20vh]">
-                              {daySections
-                                  .map(daySection => (
-                                      <DropdownMenuItem
-                                          key={daySection.visitDay}
-                                          onClick={() => {
-                                            void createItineraryAndSync({
-                                              visitDay: daySection.visitDay,
-                                              placeId: Number(item.placeId) || null,
-                                              successDescription: "위시리스트에서 일정으로 추가되었습니다.",
-                                            });
-                                          }}
-                                      >
-                                        <span>{daySection.name} (Day {daySection.day})</span>
-                                      </DropdownMenuItem>
-                                  ))}
-                              {daySections.length === 0 && (
-                                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                    날짜를 선택하세요
-                                  </div>
-                              )}
-                            </div>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteWishlistMutation.mutate(item.wishlistItemId);
-                          }}
-                          className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {filteredWishlistItems.length === 0 && (
-                  <div className="text-center text-muted-foreground py-8">
-                    <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-base">위시리스트가 비어있습니다</p>
-                    <p className="text-xs">장소를 추가해보세요!</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
       </main>
 
       {/* Floating Trip Chat Button */}

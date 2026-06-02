@@ -2,9 +2,11 @@ import {useEffect, useMemo, useState} from "react";
 import {
   ArrowUpRight,
   Clock3,
+  CircleDollarSign,
   Globe2,
   MapPin,
   Phone,
+  Plus,
   Star,
   Trash2,
   X,
@@ -12,12 +14,13 @@ import {
 import {Drawer, DrawerContent} from "@/components/ui/drawer";
 import {Button} from "@/components/ui/button";
 import {Badge} from "@/components/ui/badge";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import type {PlaceDetailResponse} from "@/api/places";
 import type {NormalizedPlaceCategoryKey, PlaceDetailSummary, PlaceTypeSummary} from "@/api/placeMetadata";
 import {
   getOpeningStatusLabel,
   getOpeningStatusTone,
-  getPlaceCategoryColor,
   getPlaceTypeLabel,
 } from "@/lib/placePresentation";
 
@@ -27,12 +30,14 @@ export interface PlaceDetailDayOption {
 }
 
 export interface PlaceDetailPanelPlace {
-  mode: "itinerary" | "wishlist";
+  mode: "itinerary" | "wishlist" | "nearby";
   name: string;
   address?: string | null;
+  visitDay?: number | null;
   time?: string | null;
   memo?: string | null;
   adderNickname?: string | null;
+  adderAvatar?: string | null;
   placeTypeSummary?: PlaceTypeSummary | null;
   normalizedCategoryKey?: NormalizedPlaceCategoryKey | null;
   placeDetailSummary?: PlaceDetailSummary | null;
@@ -42,6 +47,7 @@ export interface PlaceDetailPanelPlace {
 interface PlaceDetailPanelProps {
   open: boolean;
   isMobile: boolean;
+  desktopMode?: "overlay" | "inline";
   place: PlaceDetailPanelPlace | null;
   detail?: PlaceDetailResponse | null;
   isLoading?: boolean;
@@ -128,11 +134,30 @@ const parseOpeningHoursRows = (detail?: PlaceDetailResponse | null) => {
 
 const formatVisitTime = (time?: string | null) => time?.split("T")[1]?.slice(0, 5) ?? null;
 
-const infoTileClass = "rounded-2xl border border-white/40 bg-white/75 p-3 backdrop-blur";
+const formatPriceLevel = (priceLevel?: number | null) => {
+  if (typeof priceLevel !== "number") {
+    return null;
+  }
+
+  if (priceLevel <= 0) {
+    return "무료";
+  }
+
+  return "₩".repeat(Math.min(Math.max(priceLevel, 1), 4));
+};
+
+const detailRowClass = "flex items-start gap-3 px-4 py-3";
+const actionButtonClass = "h-11 rounded-full px-4 font-semibold transition hover:-translate-y-0.5";
+const primaryActionButtonClass = `${actionButtonClass} bg-primary text-primary-foreground hover:bg-primary/90`;
+const secondaryActionButtonClass = `${actionButtonClass} border-foreground bg-background text-foreground hover:bg-slate-50 hover:text-foreground`;
+const destructiveActionButtonClass = `${actionButtonClass} border-destructive/30 bg-background text-destructive hover:bg-destructive/10 hover:text-destructive`;
+
+const getInitial = (value?: string | null) => value?.trim().charAt(0).toUpperCase() || "?";
 
 export const PlaceDetailPanel = ({
   open,
   isMobile,
+  desktopMode = "overlay",
   place,
   detail,
   isLoading = false,
@@ -152,262 +177,285 @@ export const PlaceDetailPanel = ({
     }
 
     setSelectedVisitDay(currentDay);
-  }, [currentDay, place?.mode, place?.name]);
+  }, [currentDay, place]);
 
-  const categoryColor = getPlaceCategoryColor(place?.placeTypeSummary, place?.normalizedCategoryKey);
-  const typeLabel = getPlaceTypeLabel(detail?.placeTypeSummary ?? place?.placeTypeSummary, detail?.normalizedCategoryKey ?? place?.normalizedCategoryKey);
-  const openingLabel = getOpeningStatusLabel(place?.openingStatusWarning)
+  const placeTypeSummary = detail?.placeTypeSummary ?? place?.placeTypeSummary;
+  const normalizedCategoryKey = detail?.normalizedCategoryKey ?? place?.normalizedCategoryKey;
+  const typeLabel = getPlaceTypeLabel(placeTypeSummary, normalizedCategoryKey);
+  const openingStatusKey = place?.openingStatusWarning
+    || (detail?.placeDetailSummary?.businessStatus === "CLOSED_TEMPORARILY" ? "TEMPORARILY_CLOSED" : null);
+  const openingLabel = getOpeningStatusLabel(openingStatusKey)
     || (detail?.placeDetailSummary?.businessStatus === "CLOSED_TEMPORARILY" ? "임시 휴무" : null);
+  const isOpeningStatusDestructive = getOpeningStatusTone(openingStatusKey) === "destructive";
   const rating = detail?.placeDetailSummary?.rating ?? place?.placeDetailSummary?.rating;
   const ratingCount = detail?.placeDetailSummary?.userRatingCount ?? place?.placeDetailSummary?.userRatingCount;
-  const editorialSummary = detail?.placeDetailSummary?.editorialSummary ?? place?.placeDetailSummary?.editorialSummary;
   const openingRows = useMemo(() => parseOpeningHoursRows(detail), [detail]);
   const visitTime = formatVisitTime(place?.time);
   const address = detail?.address ?? place?.address;
+  const displayName = detail?.placeName ?? place?.name;
+  const priceLabel = formatPriceLevel(detail?.priceLevel);
+  const phoneNumber = detail?.formattedPhoneNumber || detail?.internationalPhoneNumber;
+  const primaryOpeningRow = openingRows[0] ?? null;
+  const primaryOpeningText = openingLabel
+    || (primaryOpeningRow ? [primaryOpeningRow.day, primaryOpeningRow.value].filter(Boolean).join(" ") : null);
+  const itineraryDayLabel = place?.visitDay ? `Day ${place.visitDay}` : null;
+  const selectedVisitDayLabel =
+    availableDays.find((day) => day.visitDay === selectedVisitDay)?.label ?? `Day ${selectedVisitDay}`;
+  const shouldShowItineraryMeta = place?.mode === "itinerary" && Boolean(visitTime || place.memo);
+  const shouldShowWishlistAdder = place?.mode === "wishlist" && Boolean(place.adderNickname);
 
   const content = place ? (
     <div className="flex h-full flex-col bg-white">
-      <div className="shrink-0 p-4 pb-3">
-        <div className="grid h-[180px] grid-cols-4 grid-rows-2 gap-1 overflow-hidden rounded-[28px] bg-slate-100 md:h-[220px]">
-          <div
-            className="col-span-2 row-span-2 flex flex-col justify-between p-5 text-white"
-            style={{ background: `linear-gradient(140deg, ${categoryColor} 0%, #0f172a 100%)` }}
+      <div className="shrink-0 border-b border-slate-200 bg-white">
+        <div className="relative px-4 pb-4 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="장소 상세 닫기"
           >
-            <div className="flex items-center justify-between">
-              <Badge className="border-white/20 bg-white/15 text-white hover:bg-white/15">{typeLabel || "장소"}</Badge>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full bg-black/15 p-2 text-white transition hover:bg-black/25"
-                aria-label="장소 상세 닫기"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/70">place detail</div>
-              <div className="line-clamp-3 text-2xl font-semibold leading-tight">{place.name}</div>
-            </div>
-          </div>
-          <div className={infoTileClass}>
-            <div className="text-[10px] font-semibold text-slate-400">상태</div>
-            <div className="mt-2 line-clamp-2 text-sm font-semibold text-slate-800">{openingLabel || "정보 준비 중"}</div>
-          </div>
-          <div className={infoTileClass}>
-            <div className="text-[10px] font-semibold text-slate-400">평점</div>
-            <div className="mt-2 text-sm font-semibold text-slate-800">
-              {typeof rating === "number" ? rating.toFixed(1) : "-"}
-            </div>
-            {typeof ratingCount === "number" && (
-              <div className="mt-1 text-[11px] text-slate-500">{ratingCount}개 평가</div>
-            )}
-          </div>
-          <div className={infoTileClass}>
-            <div className="text-[10px] font-semibold text-slate-400">주소</div>
-            <div className="mt-2 line-clamp-3 text-sm font-medium text-slate-700">{address || "주소 정보 없음"}</div>
-          </div>
-          <div className={infoTileClass}>
-            <div className="text-[10px] font-semibold text-slate-400">
-              {place.mode === "wishlist" ? "추가자" : "방문 예정"}
-            </div>
-            <div className="mt-2 line-clamp-2 text-sm font-semibold text-slate-800">
-              {place.mode === "wishlist" ? place.adderNickname || "멤버" : visitTime || "시간 미정"}
-            </div>
-          </div>
-        </div>
-      </div>
+            <X className="h-5 w-5" />
+          </button>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {typeLabel && <Badge variant="secondary">{typeLabel}</Badge>}
-              {openingLabel && (
-                <Badge variant={getOpeningStatusTone(place.openingStatusWarning || (detail?.placeDetailSummary?.businessStatus === "CLOSED_TEMPORARILY" ? "TEMPORARILY_CLOSED" : undefined))}>
-                  {openingLabel}
-                </Badge>
+          <div className="flex gap-3 pr-12">
+            <div className="min-w-0 flex-1">
+              <h2 className="line-clamp-2 text-2xl font-semibold leading-7 text-slate-950">
+                {displayName}
+              </h2>
+              {detail?.placeName && detail.placeName !== place.name && (
+                <div className="mt-1 line-clamp-1 text-sm text-slate-500">{place.name}</div>
               )}
               {typeof rating === "number" && (
-                <Badge variant="outline">평점 {rating.toFixed(1)}{typeof ratingCount === "number" ? ` · ${ratingCount}` : ""}</Badge>
-              )}
-              {place.mode === "itinerary" && visitTime && (
-                <Badge variant="outline">{visitTime}</Badge>
-              )}
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{place.name}</h3>
-              {editorialSummary && (
-                <p className="text-sm leading-6 text-slate-600">{editorialSummary}</p>
-              )}
-              {place.memo && (
-                <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                  {place.memo}
+                <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                  <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+                  <span className="text-base font-semibold text-slate-950">{rating.toFixed(1)}</span>
+                  {typeof ratingCount === "number" && (
+                    <span className="text-sm text-muted-foreground">({ratingCount} 리뷰)</span>
+                  )}
                 </div>
               )}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {place.mode === "wishlist" && availableDays.length > 0 && onAddToItinerary && (
-              <div className="flex flex-wrap gap-2">
-                {availableDays.map((day) => (
-                  <button
-                    key={day.visitDay}
-                    type="button"
-                    onClick={() => setSelectedVisitDay(day.visitDay)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                      selectedVisitDay === day.visitDay
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                    }`}
-                  >
-                    {day.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className={`grid gap-3 ${place.mode === "wishlist" ? "grid-cols-[1.2fr_1fr]" : "grid-cols-2"}`}>
-              {place.mode === "wishlist" && onAddToItinerary ? (
-                <Button
-                  onClick={() => onAddToItinerary(selectedVisitDay)}
-                  className="h-12 rounded-2xl"
-                >
-                  Day {selectedVisitDay} 일정에 추가
-                </Button>
-              ) : (
-                <Button
-                  onClick={onOpenGoogleMaps}
-                  className="h-12 rounded-2xl"
-                >
-                  구글 지도
-                </Button>
+              {(itineraryDayLabel || typeLabel || openingLabel) && (
+                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+                  {itineraryDayLabel && (
+                    <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+                      {itineraryDayLabel}
+                    </Badge>
+                  )}
+                  {typeLabel && (
+                    <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
+                      {typeLabel}
+                    </Badge>
+                  )}
+                  {openingLabel && (
+                    <span className={`inline-flex items-center gap-1 text-sm font-semibold ${
+                      isOpeningStatusDestructive ? "text-destructive" : "text-emerald-600"
+                    }`}>
+                      <span className={`h-2 w-2 rounded-full ${
+                        isOpeningStatusDestructive ? "bg-destructive" : "bg-emerald-500"
+                      }`} />
+                      {openingLabel}
+                    </span>
+                  )}
+                </div>
               )}
-
-              <Button
-                variant={place.mode === "wishlist" ? "outline" : "destructive"}
-                onClick={place.mode === "wishlist" ? onOpenGoogleMaps : onDelete}
-                className="h-12 rounded-2xl"
-              >
-                {place.mode === "wishlist" ? "구글 지도" : "일정 삭제"}
-              </Button>
-            </div>
-
-            {place.mode === "wishlist" && onDelete && (
-              <Button
-                variant="ghost"
-                onClick={onDelete}
-                className="w-full justify-center rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                위시리스트 삭제
-              </Button>
-            )}
-          </div>
-
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <MapPin className="mt-0.5 h-4 w-4 text-slate-400" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-500">주소</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-700">{address || "주소 정보 없음"}</div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <Clock3 className="mt-0.5 h-4 w-4 text-slate-400" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-500">운영 정보</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-700">
-                    {openingLabel || "영업 상태 정보 없음"}
-                  </div>
-                </div>
-              </div>
-
-              {(detail?.formattedPhoneNumber || detail?.internationalPhoneNumber) && (
-                <div className="flex items-start gap-3">
-                  <Phone className="mt-0.5 h-4 w-4 text-slate-400" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-slate-500">전화번호</div>
-                    <div className="mt-1 text-sm leading-6 text-slate-700">
-                      {detail?.formattedPhoneNumber || detail?.internationalPhoneNumber}
+              {shouldShowItineraryMeta && (
+                <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                  {visitTime && (
+                    <div className="inline-flex items-center gap-2 font-semibold text-slate-900">
+                      <Clock3 className="h-4 w-4 text-slate-500" />
+                      가는 시간 {visitTime}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {(detail?.websiteUri || detail?.googleMapsUri) && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {detail?.websiteUri && (
-                    <a
-                      href={detail.websiteUri}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-300"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Globe2 className="h-4 w-4 text-slate-400" />
-                        웹사이트
-                      </span>
-                      <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                    </a>
                   )}
-                  {detail?.googleMapsUri && (
-                    <a
-                      href={detail.googleMapsUri}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-300"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-slate-400" />
-                        구글 지도
-                      </span>
-                      <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                    </a>
+                  {place.memo && (
+                    <div className="line-clamp-2 leading-6 text-slate-700">{place.memo}</div>
                   )}
                 </div>
               )}
+              {priceLabel && (
+                <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <CircleDollarSign className="h-4 w-4 text-slate-500" />
+                  예상 {priceLabel}/인
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-slate-400" />
-              <h4 className="text-sm font-semibold text-slate-900">영업시간</h4>
-            </div>
-            {openingRows.length > 0 ? (
-              <div className="space-y-3">
-                {openingRows.map((row, index) => (
-                  <div
-                    key={`${row.day ?? "unknown"}-${index}`}
-                    className="grid grid-cols-[74px_minmax(0,1fr)] gap-3 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0"
+            {shouldShowWishlistAdder && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    tabIndex={0}
+                    className="mt-1 inline-flex h-9 w-9 shrink-0 rounded-full ring-2 ring-background transition hover:ring-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`${place.adderNickname}님이 위시리스트에 추가`}
                   >
-                    <div className="text-xs font-semibold text-slate-500">{row.day || "안내"}</div>
-                    <div className="text-sm leading-6 text-slate-700">{row.value}</div>
+                    <Avatar className="h-9 w-9 border border-border">
+                      <AvatarImage
+                        src={place.adderAvatar || undefined}
+                        alt={place.adderNickname || "위시리스트 추가자"}
+                      />
+                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                        {getInitial(place.adderNickname)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  <p>{place.adderNickname}님이 추가</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-28">
+        <div className="space-y-3 px-4 py-4">
+          <div className="divide-y divide-slate-100">
+            <div className={detailRowClass}>
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm leading-6 text-slate-900">{address || "주소 정보 없음"}</div>
+                <button
+                  type="button"
+                  onClick={onOpenGoogleMaps}
+                  className="mt-0.5 text-left text-xs font-medium text-primary hover:underline"
+                >
+                  지도에서 보기
+                </button>
+              </div>
+            </div>
+
+            <div className={detailRowClass}>
+              <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm leading-6 ${
+                  isOpeningStatusDestructive ? "font-semibold text-destructive" : "text-slate-900"
+                }`}>
+                  {primaryOpeningText || "영업 정보 없음"}
+                </div>
+                {openingRows.length > 1 && (
+                  <div className="mt-1 space-y-1">
+                    {openingRows.slice(1, 7).map((row, index) => (
+                      <div key={`${row.day ?? "unknown"}-${index}`} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-xs leading-5 text-slate-500">
+                        <span className="font-medium">{row.day || "안내"}</span>
+                        <span>{row.value}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            ) : (
-              <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                {isLoading ? "영업시간 정보를 불러오는 중입니다." : isError ? "영업시간 정보를 불러오지 못했습니다." : "영업시간 정보가 없습니다."}
+            </div>
+
+            {phoneNumber && (
+              <div className={detailRowClass}>
+                <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1 text-sm leading-6 text-slate-900">{phoneNumber}</div>
               </div>
+            )}
+
+            {detail?.websiteUri && (
+              <a
+                href={detail.websiteUri}
+                target="_blank"
+                rel="noreferrer"
+                className={detailRowClass}
+              >
+                <Globe2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <span className="min-w-0 flex-1 truncate text-sm leading-6 text-primary">{detail.websiteUri.replace(/^https?:\/\//, "")}</span>
+                <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+              </a>
             )}
           </div>
 
           {isLoading && (
-            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
               장소 상세 정보를 불러오는 중입니다.
             </div>
           )}
 
           {isError && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
               장소 상세 정보를 불러오지 못했습니다.
             </div>
           )}
         </div>
+      </div>
+
+      <div className="shrink-0 border-t border-slate-200 bg-white p-3">
+        {place.mode === "wishlist" && onAddToItinerary ? (
+          <div className={onDelete ? "grid grid-cols-[0.9fr_1.6fr] gap-2" : "grid gap-2"}>
+            {onDelete && (
+              <Button
+                variant="outline"
+                onClick={onDelete}
+                className={secondaryActionButtonClass}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                위시 삭제
+              </Button>
+            )}
+            <div className="group/add-itinerary relative min-w-0">
+              <Button
+                onClick={() => onAddToItinerary(selectedVisitDay)}
+                aria-label={`${selectedVisitDayLabel}에 일정 추가`}
+                className={`w-full ${primaryActionButtonClass}`}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                일정에 추가
+              </Button>
+              {availableDays.length > 0 && (
+                <div className="pointer-events-none absolute bottom-full left-0 right-0 z-20 min-w-[180px] translate-y-1 rounded-lg border border-border bg-background p-2 opacity-0 shadow-lg transition-all group-hover/add-itinerary:pointer-events-auto group-hover/add-itinerary:translate-y-0 group-hover/add-itinerary:opacity-100 group-focus-within/add-itinerary:pointer-events-auto group-focus-within/add-itinerary:translate-y-0 group-focus-within/add-itinerary:opacity-100">
+                  <div className="mb-2 px-1 text-xs font-semibold text-muted-foreground">추가할 Day</div>
+                  <div className="grid max-h-44 gap-1 overflow-y-auto overscroll-contain pr-1">
+                    {availableDays.map((day) => (
+                      <button
+                        key={day.visitDay}
+                        type="button"
+                        onClick={() => setSelectedVisitDay(day.visitDay)}
+                        aria-pressed={selectedVisitDay === day.visitDay}
+                        className={`rounded-md px-3 py-2 text-left text-sm font-medium transition ${
+                          selectedVisitDay === day.visitDay
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground hover:bg-slate-50"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : place.mode === "itinerary" ? (
+          <div className={onDelete ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+            <Button
+              onClick={onOpenGoogleMaps}
+              className={primaryActionButtonClass}
+            >
+              <MapPin className="mr-2 h-4 w-4" />
+              구글 지도
+            </Button>
+            {onDelete && (
+              <Button
+                variant="outline"
+                onClick={onDelete}
+                className={destructiveActionButtonClass}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                일정 삭제
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Button
+            onClick={onOpenGoogleMaps}
+            className={`w-full ${primaryActionButtonClass}`}
+          >
+            <MapPin className="mr-2 h-4 w-4" />
+            구글 지도
+          </Button>
+        )}
       </div>
     </div>
   ) : null;
@@ -423,6 +471,14 @@ export const PlaceDetailPanel = ({
           {content}
         </DrawerContent>
       </Drawer>
+    );
+  }
+
+  if (desktopMode === "inline") {
+    return (
+      <div className="hidden h-full w-full bg-white md:block">
+        {content}
+      </div>
     );
   }
 

@@ -5,6 +5,11 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
+/**
+ * 백엔드 HTTP 진입점.
+ *
+ * transport DTO와 application use case 연결 경계.
+ */
 @RestController
 @RequestMapping("/api/v1/test")
 class TestController {

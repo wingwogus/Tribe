@@ -19,6 +19,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration
 
 
+/**
+ * 설정 API 설정 경계.
+ *
+ * Spring wiring과 runtime 옵션 연결.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity

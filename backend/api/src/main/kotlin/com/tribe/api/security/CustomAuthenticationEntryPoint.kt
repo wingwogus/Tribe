@@ -9,6 +9,11 @@ import org.springframework.security.core.AuthenticationException
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.stereotype.Component
 
+/**
+ * 보안 API 계층 경계.
+ *
+ * HTTP transport와 application 계층 분리.
+ */
 @Component
 class CustomAuthenticationEntryPoint : AuthenticationEntryPoint {
 

@@ -5,6 +5,11 @@ import com.tribe.application.itinerary.place.RouteDetails
 import com.tribe.api.itinerary.place.PlaceResponses
 import java.time.LocalDateTime
 
+/**
+ * 일정 아이템 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object ItemResponses {
     data class LocationResponse(
         val lat: Double,

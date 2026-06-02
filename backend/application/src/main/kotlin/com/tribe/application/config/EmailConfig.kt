@@ -10,6 +10,11 @@ import java.util.Properties
 import kotlin.apply
 import kotlin.collections.set
 
+/**
+ * 설정 application 설정 경계.
+ *
+ * use case 의존성 wiring과 보안 bean 연결.
+ */
 @Configuration
 @ConditionalOnProperty(name = ["tribe.auth.enabled"], havingValue = "true", matchIfMissing = true)
 class EmailConfig(

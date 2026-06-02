@@ -2,6 +2,11 @@ package com.tribe.application.trip.core
 
 import java.time.LocalDate
 
+/**
+ * 여행 command 모델 경계.
+ *
+ * controller 입력을 use case 의도로 정규화.
+ */
 object TripCommand {
     data class Create(
         val title: String,
@@ -18,6 +23,7 @@ object TripCommand {
         val endDate: LocalDate,
         val country: String,
         val regionCode: String? = null,
+        val deleteOutOfRangeItems: Boolean = false,
     )
 
     data class Join(

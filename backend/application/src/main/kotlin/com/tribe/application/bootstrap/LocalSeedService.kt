@@ -31,6 +31,11 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+/**
+ * 로컬 부트스트랩 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Component
 @Profile("local", "dev")
 @ConditionalOnProperty(name = ["tribe.seed.enabled"], havingValue = "true")

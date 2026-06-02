@@ -1,5 +1,10 @@
 package com.tribe.api.common
 
+/**
+ * 공통 API 계층 경계.
+ *
+ * HTTP transport와 application 계층 분리.
+ */
 data class ApiResponse<T>(
     val success: Boolean,
     val data: T? = null,

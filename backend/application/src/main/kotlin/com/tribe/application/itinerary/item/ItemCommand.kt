@@ -2,6 +2,11 @@ package com.tribe.application.itinerary.item
 
 import java.time.LocalDateTime
 
+/**
+ * 일정 아이템 command 모델 경계.
+ *
+ * controller 입력을 use case 의도로 정규화.
+ */
 object ItemCommand {
     data class Create(
         val tripId: Long,

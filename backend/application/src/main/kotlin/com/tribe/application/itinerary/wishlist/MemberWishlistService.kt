@@ -16,6 +16,11 @@ import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
+/**
+ * 개인 위시리스트 use case.
+ *
+ * 멤버 개인 장소 저장소와 여행 위시리스트 승격의 출발점.
+ */
 @Service
 @Transactional
 class MemberWishlistService(
@@ -26,13 +31,16 @@ class MemberWishlistService(
     private val placeResultAssembler: PlaceResultAssembler,
 ) {
     fun addWishlistItem(command: MemberWishlistCommand.Add): MemberWishlistResult.Item {
+        // 흐름: 현재 멤버 확인 -> 중복 차단 -> canonical Place 확보 -> 개인 위시 저장.
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
 
+        // 개인 위시리스트도 Google placeId 기준 중복 저장 차단.
         if (memberWishlistItemRepository.existsByMember_IdAndPlace_ExternalPlaceId(memberId, command.externalPlaceId)) {
             throw BusinessException(ErrorCode.WISHLIST_ITEM_ALREADY_EXISTS)
         }
 
+        // 검색 후보 payload를 내부 Place로 저장/보강한 뒤 개인 항목과 연결.
         val place = placeCatalogService.getOrCreateAndEnrich(
             externalPlaceId = command.externalPlaceId,
             placeName = command.placeName,
@@ -64,6 +72,7 @@ class MemberWishlistService(
     }
 
     fun deleteWishlistItems(command: MemberWishlistCommand.Delete) {
+        // 현재 멤버 소유 항목만 삭제 대상, 일부 누락도 오류로 처리.
         val memberId = currentActor.requireUserId()
         val ids = command.memberWishlistItemIds.distinct()
         if (ids.isEmpty()) return
@@ -91,6 +100,7 @@ class MemberWishlistService(
         place: Place,
     ): MemberWishlistItem =
         try {
+            // DB unique 경합까지 같은 중복 오류로 수렴.
             memberWishlistItemRepository.saveAndFlush(
                 MemberWishlistItem(
                     member = member,
@@ -102,6 +112,7 @@ class MemberWishlistService(
         }
 
     private fun toItem(item: MemberWishlistItem): MemberWishlistResult.Item {
+        // 개인 위시 목록에서도 저장된 Place 상세 요약을 함께 노출.
         val placeTypeSummary = placeResultAssembler.toPlaceTypeSummary(item.place)
         val photoHint = placeResultAssembler.toPhotoHint(item.place)
         return MemberWishlistResult.Item(

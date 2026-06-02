@@ -13,6 +13,11 @@ import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import java.time.LocalDateTime
 
+/**
+ * 커뮤니티 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class CommunityPost(
     @ManyToOne(fetch = FetchType.LAZY)

@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.any
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
@@ -69,5 +71,32 @@ class PlaceCatalogServiceTest {
         assertEquals(10L, result.id)
         assertEquals("place-1", result.externalPlaceId)
         verifyNoInteractions(placeSearchGateway)
+    }
+
+    @Test
+    fun `getOrCreateFromExternalPlaceId creates place from lightweight summary without details enrichment`() {
+        val summary = PlaceSearchGateway.SearchHit(
+            externalPlaceId = "place-1",
+            placeName = "Tokyo Tower",
+            address = "Tokyo",
+            latitude = 35.6586,
+            longitude = 139.7454,
+            primaryType = "tourist_attraction",
+            types = listOf("tourist_attraction", "point_of_interest"),
+        )
+        `when`(placeRepository.findByExternalPlaceId("place-1")).thenReturn(null)
+        `when`(placeSearchGateway.getPlaceSummary("place-1", "ko")).thenReturn(summary)
+        `when`(placeRepository.saveAndFlush(any(Place::class.java))).thenAnswer { invocation ->
+            val saved = invocation.arguments[0] as Place
+            ReflectionTestUtils.setField(saved, "id", 10L)
+            saved
+        }
+
+        val result = service.getOrCreateFromExternalPlaceId("place-1", "ko")
+
+        assertEquals(10L, result.id)
+        assertEquals("Tokyo Tower", result.name)
+        assertEquals("tourist_attraction", result.googlePrimaryType)
+        verify(placeSearchGateway, never()).getPlaceDetails("place-1", "ko")
     }
 }

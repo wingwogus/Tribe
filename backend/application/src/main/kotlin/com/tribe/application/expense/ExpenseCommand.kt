@@ -3,6 +3,11 @@ package com.tribe.application.expense
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 지출 command 모델 경계.
+ *
+ * controller 입력을 use case 의도로 정규화.
+ */
 object ExpenseCommand {
     data class Item(
         val itemId: Long? = null,

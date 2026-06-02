@@ -10,6 +10,11 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import java.util.*
 
+/**
+ * 설정 framework callback 경계.
+ *
+ * Spring 실행 흐름과 Tribe 오류/인증 규칙 연결.
+ */
 @Component
 class LoggingFilter : OncePerRequestFilter() {
 

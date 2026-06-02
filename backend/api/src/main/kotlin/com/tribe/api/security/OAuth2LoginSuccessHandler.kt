@@ -12,6 +12,11 @@ import org.springframework.stereotype.Component
 import org.springframework.http.ResponseCookie
 import org.springframework.web.util.UriComponentsBuilder
 
+/**
+ * 보안 framework callback 경계.
+ *
+ * Spring 실행 흐름과 Tribe 오류/인증 규칙 연결.
+ */
 @Component
 class OAuth2LoginSuccessHandler(
     private val tokenProvider: TokenProvider,

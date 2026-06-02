@@ -19,6 +19,11 @@ import java.math.BigDecimal
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
+/**
+ * 여행 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @ConditionalOnProperty(name = ["tribe.trip.review.enabled"], havingValue = "true", matchIfMissing = true)
 @Transactional

@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {MemberResponse} from "@/api/auth";
+import type {MemberResponse} from "@/api/auth";
 
 interface HeaderProps {
   isLoggedIn: boolean;
@@ -19,6 +19,7 @@ interface HeaderProps {
   onLogoutClick: () => void;
   onJoinTripClick: () => void;
   onEditNicknameClick: () => void;
+  showJoinTripAction?: boolean;
 }
 
 export const Header = ({
@@ -28,6 +29,7 @@ export const Header = ({
   onLogoutClick,
   onJoinTripClick,
   onEditNicknameClick,
+  showJoinTripAction = true,
 }: HeaderProps) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,6 +49,7 @@ export const Header = ({
                 variant="ghost"
                 onClick={() => navigate('/')}
                 size="sm"
+                className="rounded-full px-3 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
               >
                 <Globe className="w-4 h-4 md:mr-2" />
                 <span className="hidden md:inline">나의 여행</span>
@@ -56,14 +59,15 @@ export const Header = ({
                 variant="ghost"
                 onClick={() => navigate('/community')}
                 size="sm"
+                className="rounded-full px-3 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
               >
                 <Globe className="w-4 h-4 md:mr-2" />
                 <span className="hidden md:inline">커뮤니티</span>
               </Button>
             )}
-            {isLoggedIn && (
+            {isLoggedIn && showJoinTripAction && (
               <Button 
-                className="bg-gradient-primary hover:shadow-primary transition-all duration-300"
+                className="rounded-full bg-primary px-4 text-primary-foreground shadow-primary transition-all duration-300 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_14px_34px_-18px_rgba(37,99,235,0.65)]"
                 onClick={onJoinTripClick}
                 size="sm"
               >
@@ -109,7 +113,11 @@ export const Header = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button onClick={onLoginClick} size="sm">
+              <Button
+                onClick={onLoginClick}
+                size="sm"
+                className="rounded-full bg-primary px-4 text-primary-foreground shadow-primary transition-all duration-300 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_14px_34px_-18px_rgba(37,99,235,0.65)]"
+              >
                 <LogIn className="w-4 h-4 md:mr-2" />
                 <span className="hidden md:inline">로그인</span>
               </Button>

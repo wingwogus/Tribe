@@ -5,6 +5,11 @@ import com.tribe.application.itinerary.wishlist.WishlistResult
 import com.tribe.application.trip.core.TripResult
 import java.time.LocalDate
 
+/**
+ * 여행 application 계층 경계.
+ *
+ * 도메인 조작과 외부 adapter 의존성 분리.
+ */
 enum class TripRealtimeEventType {
     TRIP_LIFECYCLE,
     TRIP_MEMBER,

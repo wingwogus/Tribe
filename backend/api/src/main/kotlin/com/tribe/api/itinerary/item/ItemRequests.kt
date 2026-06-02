@@ -3,6 +3,11 @@ package com.tribe.api.itinerary.item
 import com.tribe.application.itinerary.item.ItemCommand
 import java.time.LocalDateTime
 
+/**
+ * 일정 아이템 HTTP request 모델 경계.
+ *
+ * controller 입력 shape와 application command 변환 기준.
+ */
 object ItemRequests {
     data class CreateRequest(
         val visitDay: Int,

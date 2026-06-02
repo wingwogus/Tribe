@@ -19,6 +19,11 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
+/**
+ * 지출 use case 경계.
+ *
+ * 검증, 도메인 조회, 결과 조립 순서 보관.
+ */
 @Service
 @Transactional
 class ExpenseService(

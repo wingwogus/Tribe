@@ -3,6 +3,11 @@ package com.tribe.application.expense
 import java.math.BigDecimal
 import java.time.LocalDate
 
+/**
+ * 지출 result 모델 경계.
+ *
+ * 도메인 상태를 API 응답 가능한 shape로 분리.
+ */
 object SettlementResult {
     data class DailyExpenseSummary(
         val expenseId: Long,

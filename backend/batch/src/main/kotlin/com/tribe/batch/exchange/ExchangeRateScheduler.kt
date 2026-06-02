@@ -6,6 +6,11 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
+/**
+ * 환율 scheduler 경계.
+ *
+ * 외부 동기화 trigger와 application processor 연결.
+ */
 @Component
 class ExchangeRateScheduler(
     private val exchangeRateService: ExchangeRateService,

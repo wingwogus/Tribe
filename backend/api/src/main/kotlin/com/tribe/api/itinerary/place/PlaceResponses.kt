@@ -1,10 +1,19 @@
 package com.tribe.api.itinerary.place
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceTypeSummary
 
+/**
+ * 장소 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object PlaceResponses {
+    /**
+     * Google type 요약 응답.
+     */
     data class PlaceTypeSummaryResponse(
         val primaryType: String?,
         val types: List<String>,
@@ -19,6 +28,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 장소 사진 참조 응답.
+     */
     data class PhotoHintResponse(
         val name: String?,
         val photoUri: String? = null,
@@ -31,6 +43,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 목록에서 쓰는 얇은 상세 요약.
+     */
     data class PlaceDetailSummaryResponse(
         val businessStatus: String?,
         val rating: Double?,
@@ -47,6 +62,9 @@ object PlaceResponses {
         }
     }
 
+    /**
+     * 검색/주변/resolve 공통 목록 응답.
+     */
     data class SearchResponse(
         val placeId: Long? = null,
         val externalPlaceId: String,
@@ -56,7 +74,9 @@ object PlaceResponses {
         val longitude: Double,
         val placeTypeSummary: PlaceTypeSummaryResponse? = null,
         val normalizedCategoryKey: String? = null,
+        @field:JsonInclude(JsonInclude.Include.NON_NULL)
         val photoHint: PhotoHintResponse? = null,
+        @field:JsonInclude(JsonInclude.Include.NON_NULL)
         val placeDetailSummary: PlaceDetailSummaryResponse? = null,
     ) {
         companion object {
@@ -72,9 +92,20 @@ object PlaceResponses {
                 photoHint = result.photoHint?.let(PhotoHintResponse::from),
                 placeDetailSummary = result.placeDetailSummary?.let(PlaceDetailSummaryResponse::from),
             )
+
+            // 주변 검색 목록은 빠른 렌더링을 위해 사진/상세 요약 제거.
+            fun fromNearby(result: PlaceResult.SearchItem) = from(
+                result.copy(
+                    photoHint = null,
+                    placeDetailSummary = null,
+                ),
+            )
         }
     }
 
+    /**
+     * 내부 Place 상세 응답.
+     */
     data class DetailResponse(
         val placeId: Long,
         val externalPlaceId: String,
@@ -90,6 +121,7 @@ object PlaceResponses {
         val internationalPhoneNumber: String?,
         val websiteUri: String?,
         val googleMapsUri: String?,
+        val priceLevel: Int?,
         val regularOpeningHoursJson: String?,
         val currentOpeningHoursJson: String?,
     ) {
@@ -109,6 +141,7 @@ object PlaceResponses {
                 internationalPhoneNumber = view.internationalPhoneNumber,
                 websiteUri = view.websiteUri,
                 googleMapsUri = view.googleMapsUri,
+                priceLevel = view.priceLevel,
                 regularOpeningHoursJson = view.regularOpeningHoursJson,
                 currentOpeningHoursJson = view.currentOpeningHoursJson,
             )

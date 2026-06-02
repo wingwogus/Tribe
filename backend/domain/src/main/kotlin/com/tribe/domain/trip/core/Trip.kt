@@ -19,6 +19,11 @@ import jakarta.persistence.OneToMany
 
 import java.time.LocalDate
 
+/**
+ * 여행 도메인 상태 모델.
+ *
+ * 영속성 identity와 업무 규칙의 기준점.
+ */
 @Entity
 class Trip(
     @Column(nullable = false)

@@ -4,14 +4,25 @@ import com.tribe.api.itinerary.place.PlaceResponses
 import com.tribe.application.itinerary.wishlist.WishlistResult
 import java.math.BigDecimal
 
+/**
+ * 위시리스트 HTTP response 모델 경계.
+ *
+ * application result를 클라이언트 응답 shape로 조립.
+ */
 object WishlistResponses {
     data class AdderResponse(
         val tripMemberId: Long,
         val memberId: Long?,
         val nickname: String,
+        val avatar: String?,
     ) {
         companion object {
-            fun from(adder: WishlistResult.Adder) = AdderResponse(adder.tripMemberId, adder.memberId, adder.nickname)
+            fun from(adder: WishlistResult.Adder) = AdderResponse(
+                tripMemberId = adder.tripMemberId,
+                memberId = adder.memberId,
+                nickname = adder.nickname,
+                avatar = adder.avatar,
+            )
         }
     }
 

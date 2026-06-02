@@ -6,6 +6,11 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 
+/**
+ * 환율 application 계층 경계.
+ *
+ * 도메인 조작과 외부 adapter 의존성 분리.
+ */
 object ExchangeRateProcessor {
     private val log = LoggerFactory.getLogger(ExchangeRateProcessor::class.java)
 
