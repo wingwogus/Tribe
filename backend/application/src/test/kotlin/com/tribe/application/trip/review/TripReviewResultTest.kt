@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 
 class TripReviewResultTest {
     @Test
-    fun `review detail maps recommended places with canonical fragments`() {
+    fun `review detail maps recommended places with saved place fragments`() {
         val trip = Trip("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN)
         val review = TripReview(trip, "맛집", "## 제목\n본문")
         ReflectionTestUtils.setField(review, "id", 70L)

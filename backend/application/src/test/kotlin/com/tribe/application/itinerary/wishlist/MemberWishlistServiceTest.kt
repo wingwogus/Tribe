@@ -51,7 +51,7 @@ class MemberWishlistServiceTest {
     }
 
     @Test
-    fun `addWishlistItem creates canonical place and member wishlist item`() {
+    fun `addWishlistItem creates saved place and member wishlist item`() {
         val member = member()
         val place = place("tokyo-tower", "도쿄타워")
         `when`(currentActor.requireUserId()).thenReturn(member.id)

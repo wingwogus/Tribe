@@ -5,12 +5,12 @@ import com.tribe.application.exception.business.BusinessException
 import com.tribe.domain.itinerary.place.Place
 import com.tribe.domain.itinerary.place.PlaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
@@ -51,7 +51,7 @@ class PlaceSearchServiceTest {
                 longitude = 2.0,
             ),
         )
-        val canonical = listOf(
+        val savedItems = listOf(
             PlaceResult.SearchItem(
                 placeId = 10L,
                 externalPlaceId = "place-1",
@@ -62,7 +62,7 @@ class PlaceSearchServiceTest {
             ),
         )
         `when`(cacheRepository.get("tower|ko|country:JP|35.0|139.0|50000")).thenReturn(cached)
-        `when`(placeCatalogService.mergeWithCanonical(cached)).thenReturn(canonical)
+        `when`(placeCatalogService.mergeWithSavedPlaces(cached)).thenReturn(savedItems)
 
         val result = service.search("tower", "ko", "JP", 35.0, 139.0, 500000, "country:JP")
 
@@ -81,7 +81,7 @@ class PlaceSearchServiceTest {
         )
         `when`(cacheRepository.get("tower|ko|country:JP|35.0|139.0|50000")).thenReturn(null)
         `when`(placeSearchGateway.search("tower", "ko", expectedContext)).thenReturn(emptyList())
-        `when`(placeCatalogService.mergeWithCanonical(emptyList())).thenReturn(emptyList())
+        `when`(placeCatalogService.mergeWithSavedPlaces(emptyList())).thenReturn(emptyList())
 
         val result = service.search("tower", "ko", "JP", 35.0, 139.0, 500000, "country:JP")
 
@@ -100,7 +100,7 @@ class PlaceSearchServiceTest {
         )
         `when`(cacheRepository.get("tower|ko|country:JP|35.0|139.0|50000")).thenReturn(null)
         `when`(placeSearchGateway.search("tower", "ko", expectedContext)).thenReturn(emptyList())
-        `when`(placeCatalogService.mergeWithCanonical(emptyList())).thenReturn(emptyList())
+        `when`(placeCatalogService.mergeWithSavedPlaces(emptyList())).thenReturn(emptyList())
 
         service.search("tower", "ko", "jp", 35.0, 139.0, null, "country:JP")
 
@@ -118,7 +118,7 @@ class PlaceSearchServiceTest {
                 longitude = 139.7671,
             ),
         )
-        val canonical = listOf(
+        val nearbyItems = listOf(
             PlaceResult.SearchItem(
                 externalPlaceId = "nearby-1",
                 placeName = "Cafe",
@@ -139,7 +139,7 @@ class PlaceSearchServiceTest {
         val expectedKey = "nearby:v1|CAFE|ko|JP|1000|10|35.6812|139.7671"
         `when`(cacheRepository.get(expectedKey)).thenReturn(null)
         `when`(placeSearchGateway.searchNearby(expectedRequest)).thenReturn(gatewayHits)
-        `when`(placeCatalogService.mergeWithCanonical(gatewayHits)).thenReturn(canonical)
+        `when`(placeCatalogService.mergeNearbyWithSavedPlaces(gatewayHits)).thenReturn(nearbyItems)
 
         val result = service.searchNearby(
             latitude = 35.681234,
@@ -151,8 +151,10 @@ class PlaceSearchServiceTest {
             region = "jp",
         )
 
-        assertEquals(canonical, result)
+        assertEquals(nearbyItems, result)
         verify(placeSearchGateway).searchNearby(expectedRequest)
+        verify(placeCatalogService).mergeNearbyWithSavedPlaces(gatewayHits)
+        verify(placeCatalogService, never()).mergeWithSavedPlaces(gatewayHits)
         verify(cacheRepository).put(expectedKey, gatewayHits, java.time.Duration.ofHours(6))
     }
 
@@ -170,7 +172,7 @@ class PlaceSearchServiceTest {
         val expectedKey = "nearby:v1|CAFE|ko|JP|1100|10|35.6812|139.7671"
         `when`(cacheRepository.get(expectedKey)).thenReturn(null)
         `when`(placeSearchGateway.searchNearby(expectedRequest)).thenReturn(emptyList())
-        `when`(placeCatalogService.mergeWithCanonical(emptyList())).thenReturn(emptyList())
+        `when`(placeCatalogService.mergeNearbyWithSavedPlaces(emptyList())).thenReturn(emptyList())
 
         service.searchNearby(
             latitude = 35.6812,
@@ -215,7 +217,7 @@ class PlaceSearchServiceTest {
                 longitude = 139.7671,
             ),
         )
-        val canonical = listOf(
+        val nearbyItems = listOf(
             PlaceResult.SearchItem(
                 externalPlaceId = "nearby-1",
                 placeName = "Cafe",
@@ -226,7 +228,7 @@ class PlaceSearchServiceTest {
         )
         val expectedKey = "nearby:v1|CAFE|ko|JP|1000|10|35.6812|139.7671"
         `when`(cacheRepository.get(expectedKey)).thenReturn(cached)
-        `when`(placeCatalogService.mergeWithCanonical(cached)).thenReturn(canonical)
+        `when`(placeCatalogService.mergeNearbyWithSavedPlaces(cached)).thenReturn(nearbyItems)
 
         val result = service.searchNearby(
             latitude = 35.681249,
@@ -238,13 +240,15 @@ class PlaceSearchServiceTest {
             region = "JP",
         )
 
-        assertEquals(canonical, result)
+        assertEquals(nearbyItems, result)
         verify(cacheRepository).get(expectedKey)
+        verify(placeCatalogService).mergeNearbyWithSavedPlaces(cached)
+        verify(placeCatalogService, never()).mergeWithSavedPlaces(cached)
         verifyNoInteractions(placeSearchGateway)
     }
 
     @Test
-    fun `searchNearby suppresses detail-only fields from canonical matches`() {
+    fun `searchNearby delegates nearby hits to lightweight saved place merge`() {
         val gatewayHits = listOf(
             PlaceSearchGateway.SearchHit(
                 externalPlaceId = "nearby-1",
@@ -254,7 +258,7 @@ class PlaceSearchServiceTest {
                 longitude = 139.7671,
             ),
         )
-        val canonical = listOf(
+        val nearbyItems = listOf(
             PlaceResult.SearchItem(
                 placeId = 10L,
                 externalPlaceId = "nearby-1",
@@ -262,13 +266,6 @@ class PlaceSearchServiceTest {
                 address = "Tokyo",
                 latitude = 35.6812,
                 longitude = 139.7671,
-                photoHint = PlaceResult.PhotoHint(name = "places/nearby-1/photos/1"),
-                placeDetailSummary = PlaceDetailSummary(
-                    businessStatus = "OPERATIONAL",
-                    rating = 4.7,
-                    userRatingCount = 123,
-                    editorialSummary = "Known local cafe.",
-                ),
             ),
         )
         val expectedRequest = PlaceSearchGateway.NearbySearchRequest(
@@ -282,13 +279,13 @@ class PlaceSearchServiceTest {
         )
         `when`(cacheRepository.get("nearby:v1|CAFE|ko|JP|1000|10|35.6812|139.7671")).thenReturn(null)
         `when`(placeSearchGateway.searchNearby(expectedRequest)).thenReturn(gatewayHits)
-        `when`(placeCatalogService.mergeWithCanonical(gatewayHits)).thenReturn(canonical)
+        `when`(placeCatalogService.mergeNearbyWithSavedPlaces(gatewayHits)).thenReturn(nearbyItems)
 
         val result = service.searchNearby(35.6812, 139.7671, 1000, 10, "CAFE", "ko", "JP")
 
-        assertEquals(10L, result.single().placeId)
-        assertNull(result.single().photoHint)
-        assertNull(result.single().placeDetailSummary)
+        assertEquals(nearbyItems, result)
+        verify(placeCatalogService).mergeNearbyWithSavedPlaces(gatewayHits)
+        verify(placeCatalogService, never()).mergeWithSavedPlaces(gatewayHits)
     }
 
     @Test
@@ -319,7 +316,7 @@ class PlaceSearchServiceTest {
         requestKeys.forEach { (_, key) ->
             `when`(cacheRepository.get(key)).thenReturn(null)
         }
-        `when`(placeCatalogService.mergeWithCanonical(emptyList())).thenReturn(emptyList())
+        `when`(placeCatalogService.mergeNearbyWithSavedPlaces(emptyList())).thenReturn(emptyList())
 
         requestKeys.forEach { (request, _) ->
             service.searchNearby(
@@ -411,7 +408,7 @@ class PlaceSearchServiceTest {
     }
 
     @Test
-    fun `resolveExternalPlace creates canonical place through catalog and returns place id`() {
+    fun `resolveExternalPlace creates saved place through catalog and returns place id`() {
         val place = Place(
             externalPlaceId = "google-place-1",
             name = "Tokyo Tower",

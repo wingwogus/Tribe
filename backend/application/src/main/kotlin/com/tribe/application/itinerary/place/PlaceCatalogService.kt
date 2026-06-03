@@ -20,7 +20,7 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
- * 장소 canonical catalog use case.
+ * 저장된 장소 catalog use case.
  *
  * 외부 Google placeId를 내부 `Place`로 고정하고 상세 snapshot을 보강하는 경계.
  */
@@ -38,7 +38,7 @@ class PlaceCatalogService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun findExistingPlaces(results: List<PlaceSearchGateway.SearchHit>): Map<String, Place> {
-        // 외부 후보 목록에서 이미 저장된 canonical Place만 한 번에 조회.
+        // 외부 후보 목록에서 이미 저장된 Place만 한 번에 조회.
         if (results.isEmpty()) return emptyMap()
         return placeRepository.findByExternalPlaceIdIn(results.map { it.externalPlaceId }).associateBy { it.externalPlaceId }
     }
@@ -51,7 +51,7 @@ class PlaceCatalogService(
         longitude: BigDecimal,
         language: String = "ko",
     ): Place {
-        // 흐름: 기존 Place 조회 -> 없으면 새 canonical 저장 -> 상세 정보 보강.
+        // 흐름: 기존 Place 조회 -> 없으면 새 Place 저장 -> 상세 정보 보강.
         val place = placeRepository.findByExternalPlaceId(externalPlaceId)
             ?: createPlaceOrFindConcurrent(
                 externalPlaceId = externalPlaceId,
@@ -99,10 +99,16 @@ class PlaceCatalogService(
         )
     }
 
-    fun mergeWithCanonical(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
+    fun mergeWithSavedPlaces(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
         // 검색 후보에 내부 placeId/detailSummary를 덧입혀 저장 여부를 응답에 반영.
         val existingMap = findExistingPlaces(results)
         return results.map { result -> placeResultAssembler.toSearchItem(result, existingMap[result.externalPlaceId]) }
+    }
+
+    fun mergeNearbyWithSavedPlaces(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
+        // 주변 후보는 내부 placeId/type만 얇게 병합하고 상세/사진/영업시간 조립은 건너뛴다.
+        val existingMap = findExistingPlaces(results)
+        return results.map { result -> placeResultAssembler.toNearbySearchItem(result, existingMap[result.externalPlaceId]) }
     }
 
     fun enrichDetailsIfNeeded(place: Place, language: String = "ko"): Place {
@@ -162,7 +168,7 @@ class PlaceCatalogService(
                 )
             } ?: throw DataIntegrityViolationException("Failed to save place")
         } catch (ex: DataIntegrityViolationException) {
-            // unique key 경합이면 이미 저장된 canonical Place 재조회.
+            // unique key 경합이면 이미 저장된 Place 재조회.
             placeRepository.findByExternalPlaceId(externalPlaceId) ?: throw ex
         }
 

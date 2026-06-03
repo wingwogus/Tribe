@@ -9,7 +9,7 @@ import java.time.Duration
 /**
  * 장소 검색 Redis cache adapter.
  *
- * 외부 검색 후보 목록을 짧게 보관하고 canonical 병합은 조회 시점에 재수행.
+ * 외부 검색 후보 목록을 짧게 보관하고 저장된 장소 병합은 조회 시점에 재수행.
  */
 @Repository
 class RedisPlaceSearchCacheRepository(

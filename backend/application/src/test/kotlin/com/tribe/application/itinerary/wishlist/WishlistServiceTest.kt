@@ -258,7 +258,7 @@ class WishlistServiceTest {
     }
 
     @Test
-    fun `addWishListFromPlace creates trip wishlist from canonical place`() {
+    fun `addWishListFromPlace creates trip wishlist from saved place`() {
         val fixture = fixture()
         val sourcePlace = place("google-place", "도쿄타워")
         `when`(tripAuthorizationPolicy.isTripMember(fixture.trip.id)).thenReturn(true)

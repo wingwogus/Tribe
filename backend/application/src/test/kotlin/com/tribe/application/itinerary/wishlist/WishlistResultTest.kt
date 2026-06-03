@@ -17,7 +17,7 @@ import java.time.LocalDate
 
 class WishlistResultTest {
     @Test
-    fun `item from applies canonical place-derived fragments`() {
+    fun `item from applies saved place-derived fragments`() {
         val trip = Trip("Trip", LocalDate.now(), LocalDate.now().plusDays(1), Country.JAPAN)
         val member = Member(id = 1L, email = "user@test.com", passwordHash = "pw", nickname = "adder")
         val tripMember = TripMember(member = member, trip = trip, role = TripRole.MEMBER)

@@ -126,6 +126,7 @@ object PlaceResponses {
                 result.copy(
                     photoHint = null,
                     placeDetailSummary = null,
+                    openingSummary = null,
                 ),
             )
         }

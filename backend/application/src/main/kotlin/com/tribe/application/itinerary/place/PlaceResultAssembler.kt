@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 /**
  * 장소 응답 assembler.
  *
- * 외부 후보와 내부 canonical Place를 API 응답 가능한 shape로 조립.
+ * 외부 후보와 이미 저장된 Place를 API 응답 가능한 shape로 조립.
  */
 @Component
 class PlaceResultAssembler {
@@ -46,13 +46,13 @@ class PlaceResultAssembler {
 
     fun toSearchItem(
         hit: PlaceSearchGateway.SearchHit,
-        canonicalPlace: Place?,
+        savedPlace: Place?,
     ): PlaceResult.SearchItem {
         // 외부 후보 type을 우선 사용하고, 저장된 Place type은 보조 근거로 사용.
         val placeTypeSummary = fromRawTypes(hit.primaryType, hit.types)
-            ?: toPlaceTypeSummary(canonicalPlace)
+            ?: toPlaceTypeSummary(savedPlace)
         return PlaceResult.SearchItem(
-            placeId = canonicalPlace?.id,
+            placeId = savedPlace?.id,
             externalPlaceId = hit.externalPlaceId,
             placeName = hit.placeName,
             address = hit.address,
@@ -60,10 +60,33 @@ class PlaceResultAssembler {
             longitude = hit.longitude,
             placeTypeSummary = placeTypeSummary,
             normalizedCategoryKey = Companion.toNormalizedCategoryKey(placeTypeSummary)
-                ?: toNormalizedCategoryKey(canonicalPlace),
-            photoHint = toPhotoHint(canonicalPlace),
-            placeDetailSummary = toDetailSummary(canonicalPlace) ?: hit.toDetailSummary(),
-            openingSummary = canonicalPlace?.let(openingSummaryAssembler::toOpeningSummary) ?: hit.openingSummary,
+                ?: toNormalizedCategoryKey(savedPlace),
+            photoHint = toPhotoHint(savedPlace),
+            placeDetailSummary = toDetailSummary(savedPlace) ?: hit.toDetailSummary(),
+            openingSummary = savedPlace?.let(openingSummaryAssembler::toOpeningSummary) ?: hit.openingSummary,
+        )
+    }
+
+    fun toNearbySearchItem(
+        hit: PlaceSearchGateway.SearchHit,
+        savedPlace: Place?,
+    ): PlaceResult.SearchItem {
+        // 주변 검색은 지도 후보용 경량 shape만 조립하고 상세/사진/영업시간 계산은 피한다.
+        val placeTypeSummary = fromRawTypes(hit.primaryType, hit.types)
+            ?: toPlaceTypeSummary(savedPlace)
+        return PlaceResult.SearchItem(
+            placeId = savedPlace?.id,
+            externalPlaceId = hit.externalPlaceId,
+            placeName = hit.placeName,
+            address = hit.address,
+            latitude = hit.latitude,
+            longitude = hit.longitude,
+            placeTypeSummary = placeTypeSummary,
+            normalizedCategoryKey = Companion.toNormalizedCategoryKey(placeTypeSummary)
+                ?: toNormalizedCategoryKey(savedPlace),
+            photoHint = null,
+            placeDetailSummary = null,
+            openingSummary = null,
         )
     }
 

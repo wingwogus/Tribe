@@ -17,7 +17,7 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
- * 내부 canonical 장소.
+ * 내부 저장 장소.
  *
  * Google externalPlaceId를 unique identity로 삼아 일정/위시/리뷰가 공유.
  */

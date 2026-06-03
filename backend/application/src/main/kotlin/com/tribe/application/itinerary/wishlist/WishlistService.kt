@@ -49,7 +49,7 @@ class WishlistService(
     private val tripAuthorizationPolicy: TripAuthorizationPolicy,
 ) {
     fun addWishList(command: WishlistCommand.Add): WishlistResult.Item {
-        // 검색 후보 payload로 들어온 장소를 canonical Place로 확정 후 여행 위시에 저장.
+        // 검색 후보 payload로 들어온 장소를 저장된 Place로 확정 후 여행 위시에 저장.
         tripAuthorizationPolicy.isTripMember(command.tripId)
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }

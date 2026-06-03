@@ -35,7 +35,7 @@ class MemberWishlistService(
     private val openingSummaryAssembler = OpeningSummaryAssembler()
 
     fun addWishlistItem(command: MemberWishlistCommand.Add): MemberWishlistResult.Item {
-        // 흐름: 현재 멤버 확인 -> 중복 차단 -> canonical Place 확보 -> 개인 위시 저장.
+        // 흐름: 현재 멤버 확인 -> 중복 차단 -> 저장된 Place 확보 -> 개인 위시 저장.
         val memberId = currentActor.requireUserId()
         val member = memberRepository.findById(memberId).orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
 

@@ -94,6 +94,8 @@ Place and wishlist item responses may include these shared optional summary fiel
 - `placeDetailSummary`: business status, rating, user rating count, and editorial summary.
 - `openingSummary`: current/regular opening state with `openNow`, next open/close times, source, timezone offset, sync time, and staleness.
 
+`POST /api/v1/places/nearby` returns a lightweight place search row for map discovery. Nearby rows preserve identity, coordinates, type/category, and saved `placeId` when available, but intentionally omit `photoHint`, `placeDetailSummary`, and `openingSummary`.
+
 Trip wishlist item responses include `likeCount`, `likedByMe`, and `adder`. Member wishlist item responses omit trip-specific adder and like state.
 
 ## Realtime Contract
