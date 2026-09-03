@@ -8,6 +8,7 @@ import {
   Calculator,
   Calendar,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -17,15 +18,18 @@ import {
   Croissant,
   DollarSign,
   Edit3,
+  Eye,
   ExternalLink,
   GripVertical,
   HelpCircle,
+  Info,
   Landmark,
   Loader2,
   MapPin,
   MoreVertical,
   MoveRight,
   Plus,
+  Receipt,
   RotateCw,
   ShoppingBag,
   Sparkles,
@@ -34,6 +38,7 @@ import {
   Trash2,
   Utensils,
   Users,
+  Wallet,
   MessageCircle,
   Wine,
   X,
@@ -87,8 +92,16 @@ import {TripMembersModal} from "@/components/TripMembersModal";
 import {ItineraryMap, ItineraryMapHandle, type GooglePoiSelection} from "@/components/ItineraryMap";
 import {PlaceDetailPanel, type PlaceDetailPanelPlace} from "@/components/PlaceDetailPanel";
 import {TripChatModal} from "@/components/TripChatModal";
+import {PlaceSearchPanel} from "@/components/place/PlaceSearchPanel";
+import {WishlistPanel, type WishlistPanelItem, type WishlistSource} from "@/components/trip-planner/WishlistPanel";
 import {tripApi} from "@/api/trips";
-import {wishlistApi, WishlistItem} from "@/api/wishlist";
+import {
+  wishlistApi,
+  type MemberWishlistItem,
+  type MemberWishlistSort,
+  type TripWishlistSort,
+  type WishlistItem,
+} from "@/api/wishlist";
 import {fetchAllItinerariesForTrip, itineraryApi, ItineraryResponse, RouteDetails} from "@/api/itinerary";
 import {
   CreateExpenseRequest,
@@ -98,7 +111,12 @@ import {
   ParticipantAssignRequest
 } from "@/api/expenses";
 import {Badge} from "@/components/ui/badge";
-import {settlementApi} from "@/api/settlement";
+import {
+  type DailySettlementResponse,
+  type DebtRelation,
+  settlementApi,
+  type TotalSettlementResponse,
+} from "@/api/settlement";
 import {NearbyPlaceCategory, PlaceSearchResult, placesApi} from "@/api/places";
 import {getMemberInfo} from "@/api/auth";
 import {useToast} from "@/hooks/use-toast";
@@ -107,7 +125,7 @@ import {useTripWebSocket} from "@/hooks/useTripWebSocket";
 import { tripQueryKeys } from "@/lib/tripQueryKeys";
 import {getCountryTimezone} from "@/lib/utils";
 import {RouteInfoCard} from "@/components/RouteInfoCard";
-import {getDefaultCurrencyByCountry} from "@/lib/currency";
+import {formatCurrency, getCurrencyInfo, getDefaultCurrencyByCountry} from "@/lib/currency";
 import {
   buildPlaceItineraryCreateData,
   runCreatePlaceItineraryFlow,
@@ -130,7 +148,13 @@ import {
   getPlaceTypeLabelFromKey,
   matchesPlaceTypeFilter,
 } from "@/lib/placePresentation";
-import {formatTripDestination, getCountryOptionByCode2} from "@/lib/tripRegions";
+import {
+  buildPlaceSearchQuery,
+  formatTripDestination,
+  getCountryOptionByCode2,
+  getTripRegionByCode,
+} from "@/lib/tripRegions";
+import {getTripDateStringForDay} from "@/lib/tripDates";
 
 const NEARBY_CATEGORY_OPTIONS: { value: NearbyPlaceCategory; label: string; Icon: LucideIcon }[] = [
   { value: "RESTAURANT", label: "음식점", Icon: Utensils },
@@ -158,7 +182,7 @@ const getDesktopVisibleMapLeftInsetPx = (panelStackWidth: number) => (
     : 0
 );
 
-type DesktopSecondaryPanel = "wishlist" | "placeDetail" | null;
+type DesktopSecondaryPanel = "wishlist" | "placeDetail" | "placeSearch" | null;
 type DesktopPrimaryPanel = "itinerary" | "wishlist" | "nearby";
 
 const formatNearbyRadiusLabel = (radiusMeters: number) => {
@@ -178,6 +202,289 @@ type DaySection = {
   name: string;
   order: number;
   itineraryItems: ItineraryResponse[];
+};
+
+type PlannerMode = "itinerary" | "wishlist" | "settlement";
+type SettlementTab = "daily" | "total";
+const DEFAULT_WISHLIST_SORT: TripWishlistSort = "review_count_desc";
+
+const formatKrw = (amount: number) => formatCurrency(amount, "KRW");
+
+const formatSettlementDateLabel = (dateString: string) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  return format(date, "M.d(EEE)", { locale: ko });
+};
+
+const groupDebtRelations = (relations?: DebtRelation[]) =>
+  (relations ?? []).reduce((acc, relation) => {
+    const key = relation.fromNickname;
+    acc[key] = [...(acc[key] ?? []), relation];
+    return acc;
+  }, {} as Record<string, DebtRelation[]>);
+
+const SettlementDebtList = ({ relations }: { relations?: DebtRelation[] }) => {
+  const groupedRelations = groupDebtRelations(relations);
+  const entries = Object.entries(groupedRelations);
+
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center">
+        <CheckCircle2 className="mx-auto mb-2 h-7 w-7 text-green-600" />
+        <p className="text-sm font-semibold text-green-700">정산할 금액이 없습니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {entries.map(([fromNickname, debts]) => {
+        const totalAmount = debts.reduce((sum, debt) => sum + debt.amount, 0);
+
+        return (
+          <div key={fromNickname} className="rounded-xl border bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">{fromNickname}님이 보낼 금액</p>
+              <p className="text-sm font-bold text-primary">{formatKrw(totalAmount)}</p>
+            </div>
+            <div className="space-y-2">
+              {debts.map((debt, index) => (
+                <div key={`${debt.fromTripMemberId}-${debt.toTripMemberId}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-primary/5 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ArrowRightLeft className="h-4 w-4 flex-shrink-0 text-primary" />
+                    <span className="truncate text-sm">{debt.toNickname}에게</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-primary">{formatKrw(debt.amount)}</p>
+                    {debt.originalCurrencyCode && debt.originalCurrencyCode !== "KRW" && debt.equivalentOriginalAmount && (
+                      <p className="text-xs text-muted-foreground">
+                        {getCurrencyInfo(debt.originalCurrencyCode).symbol}
+                        {debt.equivalentOriginalAmount.toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+interface SettlementPanelProps {
+  tripTitle: string;
+  selectedDay: number;
+  selectedDate: string;
+  tab: SettlementTab;
+  onTabChange: (tab: SettlementTab) => void;
+  dailySettlement: DailySettlementResponse | null;
+  totalSettlement: TotalSettlementResponse | null;
+  isDailyLoading: boolean;
+  isTotalLoading: boolean;
+  totalDays: number;
+  onSelectDay: (day: number) => void;
+  onOpenItinerary?: () => void;
+  onViewExpenseDetail: (expenseId: number) => void;
+  showDayChips?: boolean;
+}
+
+const SettlementPanel = ({
+  tripTitle,
+  selectedDay,
+  selectedDate,
+  tab,
+  onTabChange,
+  dailySettlement,
+  totalSettlement,
+  isDailyLoading,
+  isTotalLoading,
+  totalDays,
+  onSelectDay,
+  onOpenItinerary,
+  onViewExpenseDetail,
+  showDayChips = false,
+}: SettlementPanelProps) => {
+  const isDailyTab = tab === "daily";
+  const isLoading = isDailyTab ? isDailyLoading : isTotalLoading;
+
+  return (
+    <Card className="flex h-full flex-col overflow-hidden border-2 bg-white shadow-2xl">
+      <CardHeader className="flex-shrink-0 space-y-4 border-b p-4 md:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg md:text-xl">정산 현황</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">{tripTitle}</p>
+          </div>
+          {onOpenItinerary && (
+            <Button variant="outline" size="sm" onClick={onOpenItinerary} className="md:hidden">
+              <Calendar className="mr-1.5 h-4 w-4" />
+              일정
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 rounded-full bg-muted p-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={isDailyTab ? "default" : "ghost"}
+            className="rounded-full"
+            onClick={() => onTabChange("daily")}
+          >
+            일별 정산
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={!isDailyTab ? "default" : "ghost"}
+            className="rounded-full"
+            onClick={() => onTabChange("total")}
+          >
+            전체 정산
+          </Button>
+        </div>
+
+        {showDayChips && isDailyTab && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {Array.from({ length: totalDays }, (_, index) => index + 1).map((day) => (
+              <Button
+                key={day}
+                type="button"
+                size="sm"
+                variant={selectedDay === day ? "default" : "outline"}
+                className="h-8 rounded-full px-3"
+                onClick={() => onSelectDay(day)}
+              >
+                Day {day}
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardHeader>
+
+      <CardContent className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-4 md:p-5">
+        {isLoading ? (
+          <div className="flex h-full min-h-[240px] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : isDailyTab ? (
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-primary/20 bg-white p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+                <Calendar className="h-4 w-4 text-primary" />
+                <span>Day {selectedDay} · {formatSettlementDateLabel(selectedDate)}</span>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Wallet className="h-4 w-4 text-primary" />
+                  총 지출
+                </div>
+                <p className="text-3xl font-bold text-primary">
+                  {formatKrw(dailySettlement?.dailyTotalAmount ?? 0)}
+                </p>
+              </div>
+            </div>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Receipt className="h-4 w-4 text-primary" />
+                  지출 내역
+                </h3>
+                <span className="text-xs text-muted-foreground">{dailySettlement?.expenses.length ?? 0}건</span>
+              </div>
+              {dailySettlement?.expenses.length ? (
+                <div className="space-y-2">
+                  {dailySettlement.expenses.map((expense) => (
+                    <button
+                      key={expense.expenseId}
+                      type="button"
+                      onClick={() => onViewExpenseDetail(expense.expenseId)}
+                      className="w-full rounded-xl border bg-white p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{expense.title}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">결제자 {expense.payerName}</p>
+                        </div>
+                        <div className="flex items-start gap-2 text-right">
+                          <div>
+                            <p className="text-sm font-bold text-primary">{formatKrw(expense.totalAmount)}</p>
+                            {expense.currencyCode && expense.currencyCode !== "KRW" && expense.originalAmount && (
+                              <p className="text-xs text-muted-foreground">{formatCurrency(expense.originalAmount, expense.currencyCode)}</p>
+                            )}
+                          </div>
+                          <Eye className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed bg-white p-5 text-center text-sm text-muted-foreground">
+                  이 날짜에 등록된 지출이 없습니다
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold">
+                <Calculator className="h-4 w-4 text-primary" />
+                정산 요약
+              </h3>
+              <SettlementDebtList relations={dailySettlement?.debtRelations} />
+            </section>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {totalSettlement?.isExchangeRateApplied && (
+              <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                <Info className="h-4 w-4 flex-shrink-0" />
+                실시간 환율이 적용된 금액입니다
+              </div>
+            )}
+
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold">
+                <Users className="h-4 w-4 text-primary" />
+                멤버별 잔액
+              </h3>
+              {totalSettlement?.memberBalances.length ? (
+                <div className="space-y-2">
+                  {totalSettlement.memberBalances.map((balance) => (
+                    <div key={balance.tripMemberId} className="flex items-center justify-between rounded-xl border bg-white p-3 shadow-sm">
+                      <div>
+                        <p className="text-sm font-semibold">{balance.nickname}</p>
+                        {balance.foreignCurrenciesUsed?.length ? (
+                          <p className="text-xs text-muted-foreground">{balance.foreignCurrenciesUsed.join(", ")}</p>
+                        ) : null}
+                      </div>
+                      <p className={`text-sm font-bold ${balance.balance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {formatKrw(balance.balance)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed bg-white p-5 text-center text-sm text-muted-foreground">
+                  멤버별 잔액이 없습니다
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold">
+                <Calculator className="h-4 w-4 text-primary" />
+                최종 정산
+              </h3>
+              <SettlementDebtList relations={totalSettlement?.debtRelations} />
+            </section>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 };
 
 interface SortableDaySectionProps {
@@ -627,6 +934,8 @@ const TripPlanner = () => {
   const isMobile = useIsMobile();
   
   const [selectedDay, setSelectedDay] = useState(1);
+  const [activeMode, setActiveMode] = useState<PlannerMode>("itinerary");
+  const [settlementTab, setSettlementTab] = useState<SettlementTab>("daily");
   const [googlePoiAction, setGooglePoiAction] = useState<"itinerary" | "wishlist" | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
   const mapRef = useRef<ItineraryMapHandle>(null);
@@ -707,13 +1016,23 @@ const TripPlanner = () => {
     sourceVisitDay: null,
   });
 
+  const [isPlaceSearchPanelOpen, setIsPlaceSearchPanelOpen] = useState(false);
+  const [wishlistSource, setWishlistSource] = useState<WishlistSource>("trip");
+  const [wishlistSort, setWishlistSort] = useState<TripWishlistSort>(DEFAULT_WISHLIST_SORT);
   const [desktopPrimaryPanel, setDesktopPrimaryPanel] = useState<DesktopPrimaryPanel>("itinerary");
   const [desktopSecondaryPanel, setDesktopSecondaryPanel] = useState<DesktopSecondaryPanel>(null);
   const [isDesktopItineraryCollapsed, setIsDesktopItineraryCollapsed] = useState(false);
   const [wishlistSearchInput, setWishlistSearchInput] = useState("");
   const [wishlistSearchQuery, setWishlistSearchQuery] = useState("");
+  const [placeSearchInput, setPlaceSearchInput] = useState("");
+  const [submittedPlaceSearchQuery, setSubmittedPlaceSearchQuery] = useState("");
+  const [placeSearchResults, setPlaceSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [isPlaceSearchLoading, setIsPlaceSearchLoading] = useState(false);
+  const [placeSearchErrorMessage, setPlaceSearchErrorMessage] = useState<string | null>(null);
+  const placeSearchRequestIdRef = useRef(0);
   const [isItineraryDrawerOpen, setIsItineraryDrawerOpen] = useState(false);
   const [isWishlistDrawerOpen, setIsWishlistDrawerOpen] = useState(false);
+  const [isSettlementDrawerOpen, setIsSettlementDrawerOpen] = useState(false);
   const [isMembersHovered, setIsMembersHovered] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlaceTypeFilter, setSelectedPlaceTypeFilter] = useState("ALL");
@@ -756,11 +1075,105 @@ const TripPlanner = () => {
     ? Math.ceil((new Date(tripDetail.endDate).getTime() - new Date(tripDetail.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1
     : 0;
 
+  useEffect(() => {
+    if (totalDays > 0 && selectedDay > totalDays) {
+      setSelectedDay(totalDays);
+    }
+  }, [selectedDay, totalDays]);
+
+  const selectedSettlementDate = useMemo(
+    () => (tripDetail?.startDate ? getTripDateStringForDay(tripDetail.startDate, selectedDay) : null),
+    [selectedDay, tripDetail?.startDate],
+  );
+
   const myTripMemberId = useMemo(() => {
     if (!tripDetail || !memberInfo) return null;
     const me = tripDetail.members.find((m) => m.memberId === memberInfo.memberId);
     return me?.tripMemberId ?? null;
   }, [tripDetail, memberInfo]);
+
+  useEffect(() => {
+    if (isPlaceSearchPanelOpen) {
+      return;
+    }
+
+    setPlaceSearchResults([]);
+    setIsPlaceSearchLoading(false);
+    setPlaceSearchErrorMessage(null);
+    setSubmittedPlaceSearchQuery("");
+    placeSearchRequestIdRef.current += 1;
+  }, [isPlaceSearchPanelOpen]);
+
+  const handlePlaceSearchQueryChange = useCallback((nextQuery: string) => {
+    setPlaceSearchInput(nextQuery);
+    setPlaceSearchErrorMessage(null);
+
+    if (nextQuery.trim() !== submittedPlaceSearchQuery.trim()) {
+      setPlaceSearchResults([]);
+      setIsPlaceSearchLoading(false);
+      setSubmittedPlaceSearchQuery("");
+      placeSearchRequestIdRef.current += 1;
+    }
+  }, [submittedPlaceSearchQuery]);
+
+  const submitPlaceSearch = useCallback(async () => {
+    if (!tripDetail) {
+      return;
+    }
+
+    const query = placeSearchInput.trim();
+    if (!query) {
+      setPlaceSearchResults([]);
+      setIsPlaceSearchLoading(false);
+      setPlaceSearchErrorMessage(null);
+      setSubmittedPlaceSearchQuery("");
+      placeSearchRequestIdRef.current += 1;
+      return;
+    }
+
+    const region = getTripRegionByCode(tripDetail.regionCode);
+    const resolvedCountryCode = getCountryOptionByCode2(tripDetail.country)?.code2;
+    const [latitude, longitude] = region
+      ? [region.centerLat, region.centerLng]
+      : [undefined, undefined];
+
+    setIsPlaceSearchLoading(true);
+    setPlaceSearchErrorMessage(null);
+    setSubmittedPlaceSearchQuery(query);
+    const requestId = placeSearchRequestIdRef.current + 1;
+    placeSearchRequestIdRef.current = requestId;
+
+    try {
+      const results = await placesApi.searchPlaces(
+        buildPlaceSearchQuery(query, tripDetail.regionCode),
+        resolvedCountryCode,
+        latitude,
+        longitude,
+        50000,
+        region ? `region:${region.code}` : resolvedCountryCode ? `country:${resolvedCountryCode}` : undefined,
+      );
+      if (placeSearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      setPlaceSearchResults(results);
+    } catch (error) {
+      if (placeSearchRequestIdRef.current !== requestId) {
+        return;
+      }
+      const errorMessage = readApiErrorMessage(error, "장소 검색 중 오류가 발생했습니다.");
+      setPlaceSearchResults([]);
+      setPlaceSearchErrorMessage(errorMessage);
+      toast({
+        title: "검색 실패",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      if (placeSearchRequestIdRef.current === requestId) {
+        setIsPlaceSearchLoading(false);
+      }
+    }
+  }, [placeSearchInput, toast, tripDetail]);
 
   // WebSocket connection for real-time updates
   useTripWebSocket({
@@ -769,11 +1182,41 @@ const TripPlanner = () => {
     enabled: !!tripId && !!memberInfo,
   });
 
-  // Wishlist query
-  const { data: wishlistData } = useQuery({
-    queryKey: tripQueryKeys.wishlist(tripId ?? "", wishlistSearchQuery),
-    queryFn: () => wishlistApi.getWishlist(Number(tripId), wishlistSearchQuery || undefined),
+  const memberWishlistSort = useMemo<MemberWishlistSort>(
+    () => wishlistSort === "like_count_desc" || wishlistSort === "like_count_asc"
+      ? DEFAULT_WISHLIST_SORT
+      : wishlistSort,
+    [wishlistSort],
+  );
+
+  useEffect(() => {
+    if (wishlistSource === "member" && (wishlistSort === "like_count_desc" || wishlistSort === "like_count_asc")) {
+      setWishlistSort(DEFAULT_WISHLIST_SORT);
+    }
+  }, [wishlistSort, wishlistSource]);
+
+  // Wishlist queries
+  const { data: wishlistData, isLoading: isLoadingTripWishlist, isError: isTripWishlistError } = useQuery({
+    queryKey: tripQueryKeys.tripWishlist(tripId ?? "", wishlistSearchQuery, wishlistSort),
+    queryFn: () => wishlistApi.getWishlist(
+      Number(tripId),
+      wishlistSearchQuery || undefined,
+      0,
+      300,
+      wishlistSort,
+    ),
     enabled: !!tripId,
+  });
+
+  const { data: memberWishlistData, isLoading: isLoadingMemberWishlist, isError: isMemberWishlistError } = useQuery({
+    queryKey: tripQueryKeys.memberWishlist(wishlistSearchQuery, memberWishlistSort),
+    queryFn: () => wishlistApi.getMemberWishlist(
+      wishlistSearchQuery || undefined,
+      0,
+      300,
+      memberWishlistSort,
+    ),
+    enabled: wishlistSource === "member",
   });
 
   // Itinerary query
@@ -784,8 +1227,24 @@ const TripPlanner = () => {
   });
 
   const wishlistItems = useMemo(() => wishlistData?.content ?? [], [wishlistData?.content]);
+  const memberWishlistItems = useMemo(() => memberWishlistData?.content ?? [], [memberWishlistData?.content]);
+  const activeWishlistItems = useMemo(
+    () => wishlistSource === "trip" ? wishlistItems : memberWishlistItems,
+    [memberWishlistItems, wishlistItems, wishlistSource],
+  );
 
   const availableWishlistTypeFilters = useMemo(() => {
+    const keys = new Set<string>();
+    activeWishlistItems.forEach((item) => {
+      const key = getPlaceTypeKey(item.placeTypeSummary, item.normalizedCategoryKey);
+      if (key) {
+        keys.add(key);
+      }
+    });
+    return ["ALL", ...Array.from(keys)];
+  }, [activeWishlistItems]);
+
+  const availableTripWishlistTypeFilters = useMemo(() => {
     const keys = new Set<string>();
     wishlistItems.forEach((item) => {
       const key = getPlaceTypeKey(item.placeTypeSummary, item.normalizedCategoryKey);
@@ -795,6 +1254,20 @@ const TripPlanner = () => {
     });
     return ["ALL", ...Array.from(keys)];
   }, [wishlistItems]);
+
+  const filteredActiveWishlistItems = useMemo(
+    () => activeWishlistItems.filter((item) => matchesPlaceTypeFilter(item.placeTypeSummary, selectedPlaceTypeFilter, item.normalizedCategoryKey)),
+    [activeWishlistItems, selectedPlaceTypeFilter],
+  );
+
+  const wishlistPanelItems = useMemo<WishlistPanelItem[]>(
+    () => filteredActiveWishlistItems.map((item) =>
+      wishlistSource === "trip"
+        ? { source: "trip", item: item as WishlistItem }
+        : { source: "member", item: item as MemberWishlistItem },
+    ),
+    [filteredActiveWishlistItems, wishlistSource],
+  );
 
   const filteredWishlistItems = useMemo(
     () => wishlistItems.filter((item) => matchesPlaceTypeFilter(item.placeTypeSummary, selectedPlaceTypeFilter, item.normalizedCategoryKey)),
@@ -924,10 +1397,41 @@ const TripPlanner = () => {
     return baseDate.toISOString().slice(0, 10);
   }, [daySections, tripDetail?.startDate]);
 
+  const handleWishlistSourceChange = useCallback((nextSource: WishlistSource) => {
+    setWishlistSource(nextSource);
+    setSelectedPlaceTypeFilter("ALL");
+
+    if (nextSource === "member") {
+      setSelectedPlacePanel(null);
+      setDraggedItem(null);
+      if (wishlistSort === "like_count_desc" || wishlistSort === "like_count_asc") {
+        setWishlistSort(DEFAULT_WISHLIST_SORT);
+      }
+    }
+  }, [wishlistSort]);
+
+  const openSettlementMode = useCallback((tab: SettlementTab = "daily", day?: number) => {
+    if (day) {
+      setSelectedDay(day);
+    }
+
+    setActiveMode("settlement");
+    setSettlementTab(tab);
+    setIsPlaceSearchPanelOpen(false);
+    setDesktopSecondaryPanel(null);
+
+    if (isMobile) {
+      setIsItineraryDrawerOpen(false);
+      setIsWishlistDrawerOpen(false);
+      setIsSettlementDrawerOpen(true);
+    }
+  }, [isMobile]);
+
   const openDesktopWishlistPanel = useCallback(() => {
     setDesktopPrimaryPanel("itinerary");
     setIsDesktopItineraryCollapsed(false);
     setDesktopSecondaryPanel("wishlist");
+    setIsPlaceSearchPanelOpen(false);
     setSelectedPlacePanel(null);
   }, []);
 
@@ -935,12 +1439,26 @@ const TripPlanner = () => {
     setDesktopPrimaryPanel("wishlist");
     setIsDesktopItineraryCollapsed(false);
     setDesktopSecondaryPanel(null);
+    setIsPlaceSearchPanelOpen(false);
     setSelectedPlacePanel(null);
   }, []);
 
   const openDesktopNearbyPanel = useCallback(() => {
     setDesktopPrimaryPanel("nearby");
     setIsDesktopItineraryCollapsed(false);
+    setIsPlaceSearchPanelOpen(false);
+  }, []);
+
+  const openPlaceSearchPanel = useCallback(() => {
+    setIsDesktopItineraryCollapsed(false);
+    setDesktopSecondaryPanel("placeSearch");
+    setIsPlaceSearchPanelOpen(true);
+    setSelectedPlacePanel(null);
+  }, []);
+
+  const closePlaceSearchPanel = useCallback(() => {
+    setIsPlaceSearchPanelOpen(false);
+    setDesktopSecondaryPanel((current) => current === "placeSearch" ? null : current);
   }, []);
 
   const clearDesktopPlaceDetailPanel = useCallback(() => {
@@ -950,6 +1468,7 @@ const TripPlanner = () => {
   const closeDesktopPanelStack = useCallback(() => {
     setIsDesktopItineraryCollapsed(true);
     setDesktopSecondaryPanel(null);
+    setIsPlaceSearchPanelOpen(false);
     setSelectedPlacePanel(null);
   }, []);
 
@@ -1012,6 +1531,7 @@ const TripPlanner = () => {
       setDesktopPrimaryPanel("itinerary");
       setIsDesktopItineraryCollapsed(false);
       setDesktopSecondaryPanel("placeDetail");
+      setIsPlaceSearchPanelOpen(false);
     }
 
     setSelectedPlacePanel(nextSelection);
@@ -1038,6 +1558,7 @@ const TripPlanner = () => {
     } else {
       setIsDesktopItineraryCollapsed(false);
       setDesktopSecondaryPanel("placeDetail");
+      setIsPlaceSearchPanelOpen(false);
     }
 
     setSelectedPlacePanel(nextSelection);
@@ -1191,6 +1712,7 @@ const TripPlanner = () => {
     if (!isMobile) {
       openDesktopNearbyPanel();
       setDesktopSecondaryPanel("placeDetail");
+      setIsPlaceSearchPanelOpen(false);
     }
   }, [isMobile, openDesktopNearbyPanel]);
 
@@ -1235,17 +1757,24 @@ const TripPlanner = () => {
   });
 
   // Daily settlement query
+  const activeDailySettlementDate = dailySettlementModal.isOpen
+    ? dailySettlementModal.date
+    : selectedSettlementDate;
+  const isSettlementPanelDailyActive = activeMode === "settlement" && settlementTab === "daily";
+
   const { data: dailySettlement, isLoading: isLoadingSettlement } = useQuery({
-    queryKey: tripQueryKeys.dailySettlement(tripId ?? "", dailySettlementModal.date),
-    queryFn: () => settlementApi.getDailySettlement(Number(tripId), dailySettlementModal.date!),
-    enabled: !!tripId && !!dailySettlementModal.date && dailySettlementModal.isOpen,
+    queryKey: tripQueryKeys.dailySettlement(tripId ?? "", activeDailySettlementDate),
+    queryFn: () => settlementApi.getDailySettlement(Number(tripId), activeDailySettlementDate!),
+    enabled: !!tripId && !!activeDailySettlementDate && (dailySettlementModal.isOpen || isSettlementPanelDailyActive),
   });
 
   // Total settlement query
+  const isSettlementPanelTotalActive = activeMode === "settlement" && settlementTab === "total";
+
   const { data: totalSettlement, isLoading: isLoadingTotalSettlement } = useQuery({
     queryKey: tripQueryKeys.totalSettlement(tripId ?? ""),
     queryFn: () => settlementApi.getTotalSettlement(Number(tripId)),
-    enabled: !!tripId && totalSettlementModal,
+    enabled: !!tripId && (totalSettlementModal || isSettlementPanelTotalActive),
   });
 
   // Trip expenses query (Simple)
@@ -1276,6 +1805,7 @@ const TripPlanner = () => {
         longitude: place.longitude,
       }),
     onSuccess: (_, place) => {
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.tripWishlistRoot(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
       toast({
         title: "위시리스트에 추가됨",
@@ -1291,11 +1821,34 @@ const TripPlanner = () => {
     },
   });
 
+  const addMemberWishlistToTripMutation = useMutation({
+    mutationFn: (item: MemberWishlistItem) =>
+      wishlistApi.addTripWishlistFromMemberWishlist(Number(tripId), item.memberWishlistItemId),
+    onSuccess: (_, item) => {
+      setWishlistSource("trip");
+      setSelectedPlaceTypeFilter("ALL");
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.tripWishlistRoot(tripId ?? "") });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
+      toast({
+        title: "여행 위시리스트에 추가됨",
+        description: `${item.name}이(가) 여행 위시리스트에 추가되었습니다.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "추가 실패",
+        description: readApiErrorMessage(error, "내 위시리스트 장소 추가 중 오류가 발생했습니다."),
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete wishlist mutation
   const deleteWishlistMutation = useMutation({
     mutationFn: (wishlistItemId: number) =>
       wishlistApi.deleteWishlistItems(Number(tripId), [wishlistItemId]),
     onSuccess: (_, wishlistItemId) => {
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.tripWishlistRoot(tripId ?? "") });
       queryClient.invalidateQueries({ queryKey: tripQueryKeys.wishlistRoot(tripId ?? "") });
       if (selectedPlacePanel?.mode === "wishlist" && selectedPlacePanel.wishlistItemId === wishlistItemId) {
         setSelectedPlacePanel(null);
@@ -2135,9 +2688,10 @@ const TripPlanner = () => {
   const isDesktopNearbyMainPanelOpen = isDesktopPrimaryPanelOpen && desktopPrimaryPanel === "nearby";
   const isDesktopWishlistPanelOpen = desktopSecondaryPanel === "wishlist";
   const isDesktopPlaceDetailPanelOpen = desktopSecondaryPanel === "placeDetail" && !!selectedPlacePanel;
+  const isDesktopPlaceSearchPanelOpen = desktopSecondaryPanel === "placeSearch" && isPlaceSearchPanelOpen;
   const hasDesktopSecondaryPanel = !isMobile
     && isDesktopPrimaryPanelOpen
-    && (isDesktopWishlistPanelOpen || isDesktopPlaceDetailPanelOpen);
+    && (isDesktopWishlistPanelOpen || isDesktopPlaceDetailPanelOpen || isDesktopPlaceSearchPanelOpen);
   const selectedNearbyCategoryOption = NEARBY_CATEGORY_OPTIONS.find((option) => option.value === selectedNearbyCategory);
   const desktopPrimaryPanelLeft = DESKTOP_PRIMARY_PANEL_LEFT;
   const desktopSecondaryPanelLeft = desktopPrimaryPanelLeft + DESKTOP_ITINERARY_PANEL_WIDTH + DESKTOP_PANEL_GAP;
@@ -2151,207 +2705,44 @@ const TripPlanner = () => {
     + desktopPanelStackWidth
     + (desktopPanelStackWidth > 0 ? DESKTOP_PANEL_GAP : 0);
   const desktopNearbyControlsMaxWidth = `calc(100vw - ${desktopNearbyControlsLeft + DESKTOP_PANEL_MARGIN}px)`;
-  const renderDesktopWishlistPanel = ({
-    className,
-    titleClassName = "text-lg",
-    onClose,
-  }: {
+  const renderDesktopWishlistPanel = (_props: {
     className: string;
     titleClassName?: string;
     onClose: () => void;
   }) => (
-    <Card className={className}>
-      <CardHeader className="flex-shrink-0 border-b p-4">
-        <CardTitle className={`flex items-center justify-between ${titleClassName}`}>
-          <div className="flex items-center gap-2">
-            <span>위시리스트</span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button className="text-muted-foreground hover:text-foreground">
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="max-w-xs">
-                <p>위시리스트 항목을 일정 카드로 드래그하여 일정에 추가할 수 있습니다</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="h-8 w-8"
-          >
-            <X className="h-4 w-4" />
-            <span className="sr-only">위시리스트 닫기</span>
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex-1 space-y-3 overflow-y-auto p-5 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <div className="relative">
-          <Input
-            placeholder="내 위시리스트 검색..."
-            value={wishlistSearchInput}
-            onChange={(e) => setWishlistSearchInput(e.target.value)}
-            className="h-9 text-sm"
-          />
-        </div>
-        {availableWishlistTypeFilters.length > 1 && (
-          <div className="flex flex-wrap gap-2">
-            {availableWishlistTypeFilters.map((filterKey) => (
-              <Button
-                key={filterKey}
-                type="button"
-                size="sm"
-                variant={selectedPlaceTypeFilter === filterKey ? "default" : "outline"}
-                onClick={() => setSelectedPlaceTypeFilter(filterKey)}
-                className="h-8 rounded-full px-3"
-              >
-                {filterKey === "ALL" ? "전체" : getPlaceTypeLabelFromKey(filterKey)}
-              </Button>
-            ))}
-          </div>
-        )}
-        <Button
-          onClick={() => setShowPlaceSearchModal(true)}
-          className="w-full"
-          size="sm"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          새로운 장소 추가
-        </Button>
-        {filteredWishlistItems.map((item) => (
-          <div
-            key={item.wishlistItemId}
-            draggable
-            onDragStart={() => handleDragStart(item)}
-            onDragEnd={handleDragEnd}
-            className={`p-3 bg-gradient-subtle rounded-lg border transition-all duration-200 cursor-pointer ${
-              draggedItem?.wishlistItemId === item.wishlistItemId
-                ? 'opacity-50 scale-95'
-                : 'hover:shadow-soft hover:scale-102'
-            }`}
-            onClick={() => {
-              openWishlistPlacePanel(item);
-            }}
-          >
-            <div className="flex-col items-start justify-between gap-2">
-              <div className="flex items-center gap-2 mb-2">
-                <Avatar className="h-6 w-6 border">
-                  <AvatarImage
-                    className="object-cover"
-                    src={item.adder.avatar || undefined}
-                    alt={item.adder.nickname} />
-                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                    {item.adder.nickname.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs text-muted-foreground">{item.adder.nickname}</span>
-              </div>
-              <div className="flex items-start gap-3">
-                {getPlacePhotoUrl(item.photoHint) && (
-                  <img
-                    src={getPlacePhotoUrl(item.photoHint) || undefined}
-                    alt={item.name}
-                    className="h-14 w-14 rounded-lg object-cover border shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <h5 className="font-medium text-foreground text-sm mb-1 truncate">
-                    {item.name}
-                  </h5>
-                  {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey) && (
-                    <div className="mb-1">
-                      <Badge variant="secondary" className="text-[10px] font-medium">
-                        {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey)}
-                      </Badge>
-                    </div>
-                  )}
-                  <div className="text-xs text-muted-foreground">
-                    <p className="truncate">{item.address || "주소 정보 없음"}</p>
-                    {typeof item.placeDetailSummary?.rating === "number" && (
-                      <p className="truncate mt-1">평점 {item.placeDetailSummary.rating.toFixed(1)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-1 flex-shrink-0 justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const url = getGoogleMapsSearchUrl(item.name);
-                    openGoogleMaps(url);
-                  }}
-                  title="구글 맵에서 보기"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                    >
-                      <MoveRight className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                      날짜로 이동
-                    </div>
-                    <DropdownMenuSeparator />
-                    <div className="overflow-auto max-h-[20vh]">
-                      {daySections
-                        .map(daySection => (
-                          <DropdownMenuItem
-                            key={daySection.visitDay}
-                            onClick={() => {
-                              void createItineraryAndSync({
-                                visitDay: daySection.visitDay,
-                                placeId: Number(item.placeId) || null,
-                                successDescription: "위시리스트에서 일정으로 추가되었습니다.",
-                              });
-                            }}
-                          >
-                            <span>{daySection.name} (Day {daySection.day})</span>
-                          </DropdownMenuItem>
-                        ))}
-                      {daySections.length === 0 && (
-                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                          날짜를 선택하세요
-                        </div>
-                      )}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteWishlistMutation.mutate(item.wishlistItemId);
-                  }}
-                  className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
-        {filteredWishlistItems.length === 0 && (
-          <div className="text-center text-muted-foreground py-8">
-            <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-base">위시리스트가 비어있습니다</p>
-            <p className="text-xs">장소를 추가해보세요!</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <WishlistPanel
+      source={wishlistSource}
+      onSourceChange={handleWishlistSourceChange}
+      items={wishlistPanelItems}
+      searchValue={wishlistSearchInput}
+      onSearchChange={setWishlistSearchInput}
+      filterKeys={availableWishlistTypeFilters}
+      selectedFilter={selectedPlaceTypeFilter}
+      onFilterChange={setSelectedPlaceTypeFilter}
+      sort={wishlistSort}
+      onSortChange={setWishlistSort}
+      draggedItemId={draggedItem?.wishlistItemId ?? null}
+      isSearchOpen={isPlaceSearchPanelOpen}
+      isLoading={wishlistSource === "trip" ? isLoadingTripWishlist : isLoadingMemberWishlist}
+      errorMessage={
+        wishlistSource === "trip" && isTripWishlistError
+          ? "여행 위시리스트 조회 중 오류가 발생했습니다."
+          : wishlistSource === "member" && isMemberWishlistError
+            ? "내 위시리스트 조회 중 오류가 발생했습니다."
+            : null
+      }
+      addingMemberWishlistItemId={
+        addMemberWishlistToTripMutation.isPending
+          ? addMemberWishlistToTripMutation.variables?.memberWishlistItemId ?? null
+          : null
+      }
+      onOpenSearch={openPlaceSearchPanel}
+      onCloseSearch={closePlaceSearchPanel}
+      onSelectTripItem={openWishlistPlacePanel}
+      onDragStartTripItem={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onAddMemberItem={(item) => addMemberWishlistToTripMutation.mutate(item)}
+    />
   );
 
   const renderDesktopNearbyPanel = ({
@@ -2801,14 +3192,7 @@ const TripPlanner = () => {
 
                         <Button
                           variant="outline"
-                          onClick={() => {
-                            const date = new Date(tripDetail.startDate);
-                            date.setDate(date.getDate() + (day - 1));
-                            setDailySettlementModal({
-                              isOpen: true,
-                              date: date.toISOString().split('T')[0]
-                            });
-                          }}
+                          onClick={() => openSettlementMode("daily", day)}
                           className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                         >
                           <Calculator className="w-4 h-4 mr-2" />
@@ -2995,14 +3379,7 @@ const TripPlanner = () => {
 
                       <Button
                         variant="outline"
-                        onClick={() => {
-                          const date = new Date(tripDetail.startDate);
-                          date.setDate(date.getDate() + (day - 1));
-                          setDailySettlementModal({
-                            isOpen: true,
-                            date: date.toISOString().split('T')[0]
-                          });
-                        }}
+                        onClick={() => openSettlementMode("daily", day)}
                         className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                       >
                         <Calculator className="w-4 h-4 mr-2" />
@@ -3053,199 +3430,28 @@ const TripPlanner = () => {
                 className="h-full overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur"
                 style={{ width: DESKTOP_SECONDARY_PANEL_WIDTH }}
               >
-                {isDesktopWishlistPanelOpen && (
-                  <Card className="flex h-full flex-col rounded-none border-0 bg-transparent shadow-none">
-                    <CardHeader className="flex-shrink-0 border-b p-4">
-                      <CardTitle className="flex items-center justify-between text-lg">
-                        <div className="flex items-center gap-2">
-                          <span>위시리스트</span>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button className="text-muted-foreground hover:text-foreground">
-                                <HelpCircle className="w-4 h-4" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-xs">
-                              <p>위시리스트 항목을 일정 카드로 드래그하여 일정에 추가할 수 있습니다</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDesktopSecondaryPanel(null)}
-                          className="h-8 w-8"
-                        >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">위시리스트 닫기</span>
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 space-y-3 overflow-y-auto p-5 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                      <div className="relative">
-                        <Input
-                          placeholder="내 위시리스트 검색..."
-                          value={wishlistSearchInput}
-                          onChange={(e) => setWishlistSearchInput(e.target.value)}
-                          className="h-9 text-sm"
-                        />
-                      </div>
-                      {availableWishlistTypeFilters.length > 1 && (
-                        <div className="flex flex-wrap gap-2">
-                          {availableWishlistTypeFilters.map((filterKey) => (
-                            <Button
-                              key={filterKey}
-                              type="button"
-                              size="sm"
-                              variant={selectedPlaceTypeFilter === filterKey ? "default" : "outline"}
-                              onClick={() => setSelectedPlaceTypeFilter(filterKey)}
-                              className="h-8 rounded-full px-3"
-                            >
-                              {filterKey === "ALL" ? "전체" : getPlaceTypeLabelFromKey(filterKey)}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-                      <Button
-                        onClick={() => setShowPlaceSearchModal(true)}
-                        className="w-full"
-                        size="sm"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        새로운 장소 추가
-                      </Button>
-                      {filteredWishlistItems.map((item) => (
-                        <div
-                          key={item.wishlistItemId}
-                          draggable
-                          onDragStart={() => handleDragStart(item)}
-                          onDragEnd={handleDragEnd}
-                          className={`p-3 bg-gradient-subtle rounded-lg border transition-all duration-200 cursor-pointer ${
-                            draggedItem?.wishlistItemId === item.wishlistItemId
-                              ? 'opacity-50 scale-95'
-                              : 'hover:shadow-soft hover:scale-102'
-                          }`}
-                          onClick={() => {
-                            openWishlistPlacePanel(item);
-                          }}
-                        >
-                          <div className="flex-col items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Avatar className="h-6 w-6 border">
-                                <AvatarImage
-                                  className="object-cover"
-                                  src={item.adder.avatar || undefined}
-                                  alt={item.adder.nickname} />
-                                <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                                  {item.adder.nickname.charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs text-muted-foreground">{item.adder.nickname}</span>
-                            </div>
-                            <div className="flex items-start gap-3">
-                              {getPlacePhotoUrl(item.photoHint) && (
-                                <img
-                                  src={getPlacePhotoUrl(item.photoHint) || undefined}
-                                  alt={item.name}
-                                  className="h-14 w-14 rounded-lg object-cover border shrink-0"
-                                />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h5 className="font-medium text-foreground text-sm mb-1 truncate">
-                                  {item.name}
-                                </h5>
-                                {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey) && (
-                                  <div className="mb-1">
-                                    <Badge variant="secondary" className="text-[10px] font-medium">
-                                      {getPlaceTypeLabel(item.placeTypeSummary, item.normalizedCategoryKey)}
-                                    </Badge>
-                                  </div>
-                                )}
-                                <div className="text-xs text-muted-foreground">
-                                  <p className="truncate">{item.address || "주소 정보 없음"}</p>
-                                  {typeof item.placeDetailSummary?.rating === "number" && (
-                                    <p className="truncate mt-1">평점 {item.placeDetailSummary.rating.toFixed(1)}</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex gap-1 flex-shrink-0 justify-end">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const url = getGoogleMapsSearchUrl(item.name);
-                                  openGoogleMaps(url);
-                                }}
-                                title="구글 맵에서 보기"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <MoveRight className="w-4 h-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                                    날짜로 이동
-                                  </div>
-                                  <DropdownMenuSeparator />
-                                  <div className="overflow-auto max-h-[20vh]">
-                                    {daySections
-                                      .map(daySection => (
-                                        <DropdownMenuItem
-                                          key={daySection.visitDay}
-                                          onClick={() => {
-                                            void createItineraryAndSync({
-                                              visitDay: daySection.visitDay,
-                                              placeId: Number(item.placeId) || null,
-                                              successDescription: "위시리스트에서 일정으로 추가되었습니다.",
-                                            });
-                                          }}
-                                        >
-                                          <span>{daySection.name} (Day {daySection.day})</span>
-                                        </DropdownMenuItem>
-                                      ))}
-                                    {daySections.length === 0 && (
-                                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                        날짜를 선택하세요
-                                      </div>
-                                    )}
-                                  </div>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteWishlistMutation.mutate(item.wishlistItemId);
-                                }}
-                                className="text-destructive hover:text-destructive-foreground hover:bg-destructive h-8 w-8 p-0"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {filteredWishlistItems.length === 0 && (
-                        <div className="text-center text-muted-foreground py-8">
-                          <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-base">위시리스트가 비어있습니다</p>
-                          <p className="text-xs">장소를 추가해보세요!</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                {isDesktopWishlistPanelOpen && renderDesktopWishlistPanel({
+                  className: "",
+                  onClose: () => setDesktopSecondaryPanel(null),
+                })}
+
+                {isDesktopPlaceSearchPanelOpen && (
+                  <PlaceSearchPanel
+                    query={placeSearchInput}
+                    submittedQuery={submittedPlaceSearchQuery}
+                    onQueryChange={handlePlaceSearchQueryChange}
+                    onSearchSubmit={submitPlaceSearch}
+                    results={placeSearchResults}
+                    isLoading={isPlaceSearchLoading}
+                    errorMessage={placeSearchErrorMessage}
+                    addingExternalPlaceId={
+                      addWishlistMutation.isPending
+                        ? addWishlistMutation.variables?.externalPlaceId ?? null
+                        : null
+                    }
+                    onAddPlace={(place) => addWishlistMutation.mutate(place)}
+                    onClose={closePlaceSearchPanel}
+                  />
                 )}
 
                 {isDesktopPlaceDetailPanelOpen && (
@@ -3456,15 +3662,30 @@ const TripPlanner = () => {
             </Card>
           )}
           
-          {/* Floating Button to Open Itinerary Drawer (Mobile Only) */}
-          <Button
-            onClick={() => setIsItineraryDrawerOpen(true)}
-            className={`md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-20 shadow-lg ${selectedPlacePanel ? "hidden" : ""}`}
-            size="lg"
-          >
-            <Calendar className="w-5 h-5 mr-2" />
-            일정 보기
-          </Button>
+          {/* Floating Mobile Mode Buttons */}
+          <div className={`md:hidden fixed bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-2 ${selectedPlacePanel ? "hidden" : ""}`}>
+            <Button
+              onClick={() => {
+                setActiveMode("itinerary");
+                setIsSettlementDrawerOpen(false);
+                setIsItineraryDrawerOpen(true);
+              }}
+              className="shadow-lg"
+              size="lg"
+            >
+              <Calendar className="w-5 h-5 mr-2" />
+              일정
+            </Button>
+            <Button
+              onClick={() => openSettlementMode("daily")}
+              className="shadow-lg"
+              size="lg"
+              variant={activeMode === "settlement" ? "default" : "secondary"}
+            >
+              <Calculator className="w-5 h-5 mr-2" />
+              정산
+            </Button>
+          </div>
         </div>
 
         {/* Mobile Wishlist Drawer */}
@@ -3492,9 +3713,9 @@ const TripPlanner = () => {
                       className="h-9 text-sm"
                   />
                 </div>
-                {availableWishlistTypeFilters.length > 1 && (
+                {availableTripWishlistTypeFilters.length > 1 && (
                   <div className="flex flex-wrap gap-2">
-                    {availableWishlistTypeFilters.map((filterKey) => (
+                    {availableTripWishlistTypeFilters.map((filterKey) => (
                       <Button
                         key={filterKey}
                         type="button"
@@ -3654,6 +3875,44 @@ const TripPlanner = () => {
             </Card>
           </DrawerContent>
         </Drawer>
+
+        {/* Mobile Settlement Drawer */}
+        {selectedSettlementDate && (
+          <Drawer open={isSettlementDrawerOpen} onOpenChange={(open) => {
+            setIsSettlementDrawerOpen(open);
+            if (open) {
+              setActiveMode("settlement");
+              setSettlementTab("daily");
+              setSelectedPlacePanel(null);
+            } else if (activeMode === "settlement") {
+              setActiveMode("itinerary");
+            }
+          }}>
+            <DrawerContent className="md:hidden h-[85vh] flex flex-col">
+              <SettlementPanel
+                tripTitle={tripDetail.title}
+                selectedDay={selectedDay}
+                selectedDate={selectedSettlementDate}
+                tab={settlementTab}
+                onTabChange={setSettlementTab}
+                dailySettlement={dailySettlement || null}
+                totalSettlement={totalSettlement || null}
+                isDailyLoading={isLoadingSettlement}
+                isTotalLoading={isLoadingTotalSettlement}
+                totalDays={totalDays}
+                onSelectDay={setSelectedDay}
+                showDayChips
+                onOpenItinerary={() => {
+                  setIsSettlementDrawerOpen(false);
+                  setTimeout(() => setIsItineraryDrawerOpen(true), 250);
+                }}
+                onViewExpenseDetail={(expenseId) => {
+                  setExpenseDetailModal({ isOpen: true, expenseId });
+                }}
+              />
+            </DrawerContent>
+          </Drawer>
+        )}
 
       </main>
 

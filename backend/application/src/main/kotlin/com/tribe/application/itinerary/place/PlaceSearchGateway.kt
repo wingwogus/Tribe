@@ -19,6 +19,11 @@ interface PlaceSearchGateway {
         val longitude: Double,
         val primaryType: String? = null,
         val types: List<String> = emptyList(),
+        val businessStatus: String? = null,
+        val rating: Double? = null,
+        val userRatingCount: Int? = null,
+        val editorialSummary: String? = null,
+        val openingSummary: OpeningSummary? = null,
     )
 
     /**

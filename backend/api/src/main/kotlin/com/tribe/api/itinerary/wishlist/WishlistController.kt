@@ -60,14 +60,35 @@ class WishlistController(
     fun getWishlistItems(
         @PathVariable tripId: Long,
         @RequestParam(required = false) query: String?,
+        @RequestParam(required = false) sort: String?,
+        @RequestParam(required = false) wishlistSort: String?,
         pageable: Pageable,
     ): ResponseEntity<ApiResponse<WishlistResponses.WishlistSearchResponse>> {
+        val effectiveSort = wishlistSort ?: sort
         val result = if (query.isNullOrBlank()) {
-            wishlistService.getWishList(tripId, pageable)
+            wishlistService.getWishList(tripId, pageable, effectiveSort)
         } else {
-            wishlistService.searchWishList(tripId, query, pageable)
+            wishlistService.searchWishList(tripId, query, pageable, effectiveSort)
         }
         return ResponseEntity.ok(ApiResponse.ok(WishlistResponses.WishlistSearchResponse.from(result)))
+    }
+
+    @PostMapping("/{wishlistItemId}/likes")
+    fun likeWishlistItem(
+        @PathVariable tripId: Long,
+        @PathVariable wishlistItemId: Long,
+    ): ResponseEntity<ApiResponse<WishlistResponses.WishlistLikeResponse>> {
+        val result = wishlistService.likeWishlistItem(WishlistCommand.Like(tripId, wishlistItemId))
+        return ResponseEntity.ok(ApiResponse.ok(WishlistResponses.WishlistLikeResponse.from(result)))
+    }
+
+    @DeleteMapping("/{wishlistItemId}/likes")
+    fun unlikeWishlistItem(
+        @PathVariable tripId: Long,
+        @PathVariable wishlistItemId: Long,
+    ): ResponseEntity<ApiResponse<WishlistResponses.WishlistLikeResponse>> {
+        val result = wishlistService.unlikeWishlistItem(WishlistCommand.Like(tripId, wishlistItemId))
+        return ResponseEntity.ok(ApiResponse.ok(WishlistResponses.WishlistLikeResponse.from(result)))
     }
 
     @DeleteMapping

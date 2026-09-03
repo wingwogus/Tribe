@@ -1,23 +1,20 @@
-package com.tribe.api.itinerary.place
+package com.tribe.application.itinerary.place
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
-import com.tribe.application.itinerary.place.NearbyPlaceCategory
-import com.tribe.application.itinerary.place.PlacePhotoMedia
-import com.tribe.application.itinerary.place.PlaceResultAssembler
-import com.tribe.application.itinerary.place.PlaceSearchContext
-import com.tribe.application.itinerary.place.PlaceSearchGateway
-import com.tribe.application.itinerary.place.RouteDetails
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import reactor.util.retry.Retry
 import java.time.Duration
+import java.time.LocalDateTime
 import java.util.Locale
 import java.util.concurrent.TimeoutException
 
@@ -37,12 +34,16 @@ class GooglePlaceSearchGateway(
     companion object {
         private const val MAX_RADIUS_METERS = 50_000
         private const val DEFAULT_TIMEOUT_MILLIS = 5_000L
+        private val DETAILS_TIMEOUT = Duration.ofSeconds(5)
+        private val DETAILS_RETRY_BACKOFF = Duration.ofMillis(200)
+        internal const val SEARCH_FIELD_MASK =
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.businessStatus,places.utcOffsetMinutes,places.rating,places.userRatingCount,places.currentOpeningHours,places.editorialSummary"
         internal const val NEARBY_FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types"
         internal const val PLACE_SUMMARY_FIELD_MASK =
             "id,displayName,formattedAddress,location,primaryType,types"
-        private const val PLACE_DETAILS_FIELD_MASK =
-            "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,editorialSummary"
+        internal const val DETAILS_FIELD_MASK =
+            "id,displayName,formattedAddress,location,primaryType,types,businessStatus,utcOffsetMinutes,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,rating,userRatingCount,priceLevel,regularOpeningHours,currentOpeningHours,photos,editorialSummary"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -55,11 +56,10 @@ class GooglePlaceSearchGateway(
         val normalizedRegionCode = body["regionCode"] as? String
         val radiusMeters = ((body["locationBias"] as? Map<*, *>)?.get("circle") as? Map<*, *>)?.get("radius")
 
-        // field mask는 목록 화면에 필요한 최소 필드만 요청.
         val response = webClient.post()
             .uri("https://places.googleapis.com/v1/places:searchText")
             .header("X-Goog-Api-Key", apiKey)
-            .header("X-Goog-FieldMask", NEARBY_FIELD_MASK)
+            .header("X-Goog-FieldMask", SEARCH_FIELD_MASK)
             .bodyValue(body)
             .retrieve()
             .bodyToMono(PlacesResponse::class.java)
@@ -77,16 +77,13 @@ class GooglePlaceSearchGateway(
             .block()
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
-        return response.places?.map {
-            toSearchHit(it)
-        } ?: emptyList()
+        return response.places?.map(::toSearchHit) ?: emptyList()
     }
 
     override fun searchNearby(request: PlaceSearchGateway.NearbySearchRequest): List<PlaceSearchGateway.SearchHit> {
         // 주변 검색은 application에서 검증된 request만 받아 Google Nearby body로 변환.
         val body = buildNearbySearchRequestBody(request)
 
-        // timeout은 주변 검색 지연을 application 외부 API 오류로 단순화.
         val response = webClient.post()
             .uri("https://places.googleapis.com/v1/places:searchNearby")
             .header("X-Goog-Api-Key", apiKey)
@@ -119,7 +116,7 @@ class GooglePlaceSearchGateway(
             .block()
             ?: throw BusinessException(ErrorCode.EXTERNAL_API_ERROR)
 
-        return response.places?.mapNotNull { toNearbySearchHit(it) } ?: emptyList()
+        return response.places?.mapNotNull(::toNearbySearchHit) ?: emptyList()
     }
 
     override fun getPlaceSummary(externalPlaceId: String, language: String): PlaceSearchGateway.SearchHit? {
@@ -138,6 +135,7 @@ class GooglePlaceSearchGateway(
                 .header("X-Goog-FieldMask", PLACE_SUMMARY_FIELD_MASK)
                 .retrieve()
                 .bodyToMono(PlaceDetailsResponse::class.java)
+                .timeout(placesTimeout)
                 .block()
         } catch (ex: WebClientResponseException) {
             if (ex.statusCode.value() == 404) {
@@ -167,18 +165,82 @@ class GooglePlaceSearchGateway(
                     .build(externalPlaceId)
             }
             .header("X-Goog-Api-Key", apiKey)
-            .header("X-Goog-FieldMask", PLACE_DETAILS_FIELD_MASK)
+            .header("X-Goog-FieldMask", DETAILS_FIELD_MASK)
             .retrieve()
             .bodyToMono(PlaceDetailsResponse::class.java)
-            .doOnError { logger.error("Error calling Google Place Details API", it) }
+            .timeout(DETAILS_TIMEOUT)
+            .retryWhen(
+                Retry.backoff(1, DETAILS_RETRY_BACKOFF)
+                    .filter(::isTransientDetailsFailure)
+                    .onRetryExhaustedThrow { _, signal -> signal.failure() },
+            )
+            .doOnError { ex ->
+                if (isGoogleDetailsFailure(ex)) {
+                    logger.warn(
+                        "Google Place Details failed: externalPlaceId={}, status={}, retryable={}, cause={}",
+                        externalPlaceId,
+                        googleStatus(ex),
+                        isTransientDetailsFailure(ex),
+                        googleFailureCause(ex),
+                    )
+                }
+            }
+            .onErrorMap { ex ->
+                if (isGoogleDetailsFailure(ex)) {
+                    externalApiException(externalPlaceId, ex)
+                } else {
+                    ex
+                }
+            }
             .block()
             ?: return null
 
+        return toDetailsPayload(response)
+    }
+
+    private fun isTransientDetailsFailure(ex: Throwable): Boolean =
+        when (ex) {
+            is WebClientRequestException,
+            is TimeoutException,
+            -> true
+            is WebClientResponseException -> ex.statusCode.value() == 429 || ex.statusCode.is5xxServerError
+            else -> false
+        }
+
+    private fun isGoogleDetailsFailure(ex: Throwable): Boolean =
+        ex is WebClientRequestException || ex is TimeoutException || ex is WebClientResponseException
+
+    private fun externalApiException(externalPlaceId: String, ex: Throwable): BusinessException {
+        val detail = linkedMapOf<String, Any>(
+            "operation" to "google_place_details",
+            "externalPlaceId" to externalPlaceId,
+        )
+        googleStatus(ex)?.let { detail["status"] = it }
+        detail["cause"] = googleFailureCause(ex)
+        detail["retryable"] = isTransientDetailsFailure(ex)
+
+        return BusinessException(
+            ErrorCode.EXTERNAL_API_ERROR,
+            detail = detail,
+        )
+    }
+
+    private fun googleStatus(ex: Throwable): Int? =
+        (ex as? WebClientResponseException)?.statusCode?.value()
+
+    private fun googleFailureCause(ex: Throwable): String =
+        when (ex) {
+            is WebClientResponseException -> "http_status"
+            is WebClientRequestException -> "request"
+            is TimeoutException -> "timeout"
+            else -> "unknown"
+        }
+
+    internal fun toDetailsPayload(response: PlaceDetailsResponse): PlaceSearchGateway.DetailsPayload {
         // Google 영업시간 JSON 원문은 UI 재해석 가능성을 위해 snapshot에 보관.
         val regularOpeningHoursJson = response.regularOpeningHours?.let { objectMapper.writeValueAsString(it) }
         val currentOpeningHoursJson = response.currentOpeningHours?.let { objectMapper.writeValueAsString(it) }
 
-        // Google raw type은 application normalized category 계산 전에 type summary로 축소.
         val placeTypeSummary = PlaceResultAssembler.fromRawTypes(response.primaryType, response.types ?: emptyList())
         return PlaceSearchGateway.DetailsPayload(
             externalPlaceId = response.id,
@@ -199,9 +261,29 @@ class GooglePlaceSearchGateway(
             priceLevel = parsePriceLevel(response.priceLevel),
             regularOpeningHoursJson = regularOpeningHoursJson,
             currentOpeningHoursJson = currentOpeningHoursJson,
-            primaryPhotoName = null,
+            primaryPhotoName = response.photos?.firstNotNullOfOrNull { it.name?.takeIf(String::isNotBlank) },
             editorialSummary = response.editorialSummary?.text,
             regularOpeningPeriods = parseRegularOpeningPeriods(response.regularOpeningHours),
+        )
+    }
+
+    private fun toSearchOpeningSummary(result: PlacesResponse.PlaceResult): OpeningSummary? {
+        val currentOpeningHours = result.currentOpeningHours ?: return null
+        val openNow = currentOpeningHours.booleanFieldOrNull("openNow")
+        val nextOpenTime = currentOpeningHours.textFieldOrNull("nextOpenTime")
+        val nextCloseTime = currentOpeningHours.textFieldOrNull("nextCloseTime")
+        if (openNow == null && nextOpenTime == null && nextCloseTime == null) {
+            return null
+        }
+
+        return OpeningSummary(
+            openNow = openNow,
+            nextOpenTime = nextOpenTime,
+            nextCloseTime = nextCloseTime,
+            source = OpeningSummarySource.CURRENT,
+            timezoneOffsetMinutes = result.utcOffsetMinutes,
+            syncedAt = LocalDateTime.now(),
+            stale = false,
         )
     }
 
@@ -397,6 +479,11 @@ class GooglePlaceSearchGateway(
             longitude = place.location?.longitude ?: 0.0,
             primaryType = placeTypeSummary?.primaryType,
             types = placeTypeSummary?.types ?: emptyList(),
+            businessStatus = place.businessStatus,
+            rating = place.rating,
+            userRatingCount = place.userRatingCount,
+            editorialSummary = place.editorialSummary?.text,
+            openingSummary = toSearchOpeningSummary(place),
         )
     }
 
@@ -426,6 +513,10 @@ class GooglePlaceSearchGateway(
             longitude = place.location?.longitude ?: 0.0,
             primaryType = placeTypeSummary?.primaryType,
             types = placeTypeSummary?.types ?: emptyList(),
+            businessStatus = place.businessStatus,
+            rating = place.rating,
+            userRatingCount = place.userRatingCount,
+            editorialSummary = place.editorialSummary?.text,
         )
     }
 
@@ -441,6 +532,12 @@ class GooglePlaceSearchGateway(
             val displayName: DisplayName?,
             val primaryType: String?,
             val types: List<String>?,
+            val businessStatus: String? = null,
+            val utcOffsetMinutes: Int? = null,
+            val rating: Double? = null,
+            val userRatingCount: Int? = null,
+            val currentOpeningHours: JsonNode? = null,
+            val editorialSummary: DisplayName? = null,
         )
 
         @JsonIgnoreProperties(ignoreUnknown = true)
@@ -475,8 +572,14 @@ class GooglePlaceSearchGateway(
         val priceLevel: String?,
         val regularOpeningHours: JsonNode?,
         val currentOpeningHours: JsonNode?,
-        val editorialSummary: PlacesResponse.DisplayName?
-    )
+        val photos: List<Photo>?,
+        val editorialSummary: PlacesResponse.DisplayName?,
+    ) {
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        data class Photo(
+            val name: String?,
+        )
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class PhotoMediaRedirectResponse(
@@ -560,14 +663,14 @@ class GooglePlaceSearchGateway(
         if (!periods.isArray) return emptyList()
 
         return periods.mapIndexedNotNull { index, node ->
-            val open = node.get("open") ?: return@mapIndexedNotNull null
-            val close = node.get("close")
-            val openDay = open.get("day")?.asInt() ?: return@mapIndexedNotNull null
-            val openHour = open.get("hour")?.asInt() ?: 0
-            val openMinute = open.get("minute")?.asInt() ?: 0
-            val closeDay = close?.get("day")?.asInt() ?: openDay
-            val closeHour = close?.get("hour")?.asInt() ?: openHour
-            val closeMinute = close?.get("minute")?.asInt() ?: openMinute
+            val open = node.objectFieldOrNull("open") ?: return@mapIndexedNotNull null
+            val close = node.objectFieldOrNull("close") ?: return@mapIndexedNotNull null
+            val openDay = open.intFieldOrNull("day", 0..6) ?: return@mapIndexedNotNull null
+            val openHour = open.intFieldOrNull("hour", 0..23, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val openMinute = open.intFieldOrNull("minute", 0..59, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val closeDay = close.intFieldOrNull("day", 0..6, defaultValue = openDay) ?: return@mapIndexedNotNull null
+            val closeHour = close.intFieldOrNull("hour", 0..23, defaultValue = 0) ?: return@mapIndexedNotNull null
+            val closeMinute = close.intFieldOrNull("minute", 0..59, defaultValue = 0) ?: return@mapIndexedNotNull null
             val openTotal = openHour * 60 + openMinute
             val closeTotal = closeHour * 60 + closeMinute
 
@@ -579,5 +682,28 @@ class GooglePlaceSearchGateway(
                 sequenceNo = index + 1,
             )
         }
+    }
+
+    private fun JsonNode.objectFieldOrNull(fieldName: String): JsonNode? =
+        get(fieldName)?.takeIf { it.isObject }
+
+    private fun JsonNode.booleanFieldOrNull(fieldName: String): Boolean? {
+        val value = get(fieldName) ?: return null
+        return value.takeIf { it.isBoolean }?.booleanValue()
+    }
+
+    private fun JsonNode.textFieldOrNull(fieldName: String): String? {
+        val value = get(fieldName) ?: return null
+        return value.takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
+    }
+
+    private fun JsonNode.intFieldOrNull(
+        fieldName: String,
+        range: IntRange,
+        defaultValue: Int? = null,
+    ): Int? {
+        val value = get(fieldName) ?: return defaultValue
+        if (!value.isIntegralNumber || !value.canConvertToInt()) return null
+        return value.intValue().takeIf { it in range }
     }
 }

@@ -6,10 +6,39 @@ tribe:
       enabled: false
   itinerary:
     place-search:
-      enabled: false
+      enabled: ${WISHLIST_PLACE_SEARCH_ENABLED:${WISHLIST_PLACE_REFRESH_ENABLED:false}}
+    place-refresh:
+      enabled: ${WISHLIST_PLACE_REFRESH_ENABLED:false}
+      cron: ${WISHLIST_PLACE_REFRESH_CRON:0 0 4 * * MON}
+      zone: ${WISHLIST_PLACE_REFRESH_ZONE:Asia/Seoul}
+      batch-size: ${WISHLIST_PLACE_REFRESH_BATCH_SIZE:100}
+      rate-limit-per-minute: ${WISHLIST_PLACE_REFRESH_RATE_LIMIT_PER_MINUTE:60}
+      max-attempts: ${WISHLIST_PLACE_REFRESH_MAX_ATTEMPTS:3}
+      retry-backoff-millis: ${WISHLIST_PLACE_REFRESH_RETRY_BACKOFF_MILLIS:500}
+      language: ${WISHLIST_PLACE_REFRESH_LANGUAGE:ko}
+      details-freshness-days: ${WISHLIST_PLACE_REFRESH_DETAILS_FRESHNESS_DAYS:30}
+      regular-hours-freshness-days: ${WISHLIST_PLACE_REFRESH_REGULAR_HOURS_FRESHNESS_DAYS:30}
+      current-hours-freshness-days: ${WISHLIST_PLACE_REFRESH_CURRENT_HOURS_FRESHNESS_DAYS:7}
   trip:
     review:
       enabled: false
 
 app:
   url: http://localhost:3000
+
+google:
+  maps:
+    key: ${GOOGLE_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true

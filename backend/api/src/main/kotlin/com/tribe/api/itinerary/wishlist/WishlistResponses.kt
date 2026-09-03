@@ -29,6 +29,7 @@ object WishlistResponses {
     data class WishlistItemResponse(
         val wishlistItemId: Long,
         val placeId: Long,
+        val externalPlaceId: String,
         val name: String,
         val address: String?,
         val latitude: BigDecimal,
@@ -37,12 +38,16 @@ object WishlistResponses {
         val normalizedCategoryKey: String?,
         val photoHint: PlaceResponses.PhotoHintResponse?,
         val placeDetailSummary: PlaceResponses.PlaceDetailSummaryResponse?,
+        val openingSummary: PlaceResponses.OpeningSummaryResponse?,
         val adder: AdderResponse,
+        val likeCount: Long,
+        val likedByMe: Boolean,
     ) {
         companion object {
             fun from(item: WishlistResult.Item) = WishlistItemResponse(
                 item.wishlistItemId,
                 item.placeId,
+                item.externalPlaceId,
                 item.name,
                 item.address,
                 item.latitude,
@@ -51,7 +56,10 @@ object WishlistResponses {
                 item.normalizedCategoryKey?.name,
                 item.photoHint?.let { PlaceResponses.PhotoHintResponse(it.name, it.photoUri) },
                 item.placeDetailSummary?.let(PlaceResponses.PlaceDetailSummaryResponse::from),
+                item.openingSummary?.let(PlaceResponses.OpeningSummaryResponse::from),
                 AdderResponse.from(item.adder),
+                item.likeCount,
+                item.likedByMe,
             )
         }
     }
@@ -72,6 +80,18 @@ object WishlistResponses {
                 totalPages = page.totalPages,
                 totalElements = page.totalElements,
                 isLast = page.isLast,
+            )
+        }
+    }
+
+    data class WishlistLikeResponse(
+        val likeCount: Long,
+        val likedByMe: Boolean,
+    ) {
+        companion object {
+            fun from(summary: WishlistResult.LikeSummary) = WishlistLikeResponse(
+                likeCount = summary.likeCount,
+                likedByMe = summary.likedByMe,
             )
         }
     }

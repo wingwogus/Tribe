@@ -45,6 +45,7 @@ enum class ErrorCode(
     DUPLICATE_ORDER_REQUEST("ITINERARY_008", "error.duplicate_order_request", 400),
     CATEGORY_DAY_MISMATCH("ITINERARY_009", "error.category_day_mismatch", 400),
     PLACE_NOT_FOUND("ITINERARY_010", "error.place_not_found", 404),
+    WISHLIST_ITEM_LIKE_ALREADY_EXISTS("ITINERARY_011", "error.wishlist_item_like_already_exists", 409),
     EXTERNAL_API_ERROR("COMMON_011", "error.external_api_error", 502),
     EXCHANGE_RATE_NOT_FOUND("EXCHANGE_001", "error.exchange_rate_not_found", 404),
 

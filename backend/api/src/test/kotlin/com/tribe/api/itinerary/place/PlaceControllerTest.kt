@@ -3,6 +3,8 @@ package com.tribe.api.itinerary.place
 import com.tribe.api.exception.GlobalExceptionHandler
 import com.tribe.application.exception.ErrorCode
 import com.tribe.application.exception.business.BusinessException
+import com.tribe.application.itinerary.place.OpeningSummary
+import com.tribe.application.itinerary.place.OpeningSummarySource
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceSearchService
@@ -32,7 +34,7 @@ class PlaceControllerTest(
     @MockBean private lateinit var tokenProvider: TokenProvider
 
     @Test
-    fun `resolveExternalPlace returns resolved canonical place response`() {
+    fun `resolveExternalPlace returns resolved saved place response`() {
         `when`(
             placeSearchService.resolveExternalPlace(
                 externalPlaceId = "google-place-1",
@@ -89,6 +91,15 @@ class PlaceControllerTest(
                         userRatingCount = 123,
                         editorialSummary = "Known local cafe.",
                     ),
+                    openingSummary = OpeningSummary(
+                        openNow = true,
+                        nextOpenTime = null,
+                        nextCloseTime = "2026-05-17T14:00:00+09:00",
+                        source = OpeningSummarySource.CURRENT,
+                        timezoneOffsetMinutes = 540,
+                        syncedAt = null,
+                        stale = false,
+                    ),
                 ),
             ),
         )
@@ -116,6 +127,7 @@ class PlaceControllerTest(
             .andExpect(jsonPath("$.data[0].placeName", equalTo("Tokyo Cafe")))
             .andExpect(jsonPath("$.data[0].photoHint").doesNotExist())
             .andExpect(jsonPath("$.data[0].placeDetailSummary").doesNotExist())
+            .andExpect(jsonPath("$.data[0].openingSummary").doesNotExist())
     }
 
     @Test

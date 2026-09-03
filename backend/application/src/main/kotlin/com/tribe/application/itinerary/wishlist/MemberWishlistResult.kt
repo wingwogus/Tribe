@@ -1,6 +1,7 @@
 package com.tribe.application.itinerary.wishlist
 
 import com.tribe.application.itinerary.place.NormalizedPlaceCategoryKey
+import com.tribe.application.itinerary.place.OpeningSummary
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceTypeSummary
 import java.math.BigDecimal
@@ -28,6 +29,7 @@ object MemberWishlistResult {
         val normalizedCategoryKey: NormalizedPlaceCategoryKey?,
         val photoHint: PhotoHint?,
         val placeDetailSummary: PlaceDetailSummary?,
+        val openingSummary: OpeningSummary? = null,
     )
 
     data class SearchPage(

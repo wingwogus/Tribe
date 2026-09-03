@@ -61,7 +61,7 @@ class PlaceController(
     fun resolveExternalPlace(
         @RequestBody request: PlaceRequests.ResolveExternalPlaceRequest,
     ): ResponseEntity<ApiResponse<PlaceResponses.SearchResponse>> {
-        // 클라이언트가 선택한 외부 후보를 내부 canonical Place로 확정.
+        // 클라이언트가 선택한 외부 후보를 내부 저장 Place로 확정.
         val result = placeSearchService.resolveExternalPlace(
             externalPlaceId = request.externalPlaceId,
             language = request.language,

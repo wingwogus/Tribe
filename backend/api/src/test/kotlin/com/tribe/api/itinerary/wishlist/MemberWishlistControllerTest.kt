@@ -1,6 +1,8 @@
 package com.tribe.api.itinerary.wishlist
 
 import com.tribe.api.exception.GlobalExceptionHandler
+import com.tribe.application.itinerary.place.OpeningSummary
+import com.tribe.application.itinerary.place.OpeningSummarySource
 import com.tribe.application.itinerary.wishlist.MemberWishlistCommand
 import com.tribe.application.itinerary.wishlist.MemberWishlistResult
 import com.tribe.application.itinerary.wishlist.MemberWishlistService
@@ -16,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -24,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
+import java.time.LocalDateTime
 
 @WebMvcTest(MemberWishlistController::class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -68,6 +72,8 @@ class MemberWishlistControllerTest(
             .andExpect(jsonPath("$.data.memberWishlistItemId", equalTo(1)))
             .andExpect(jsonPath("$.data.placeId", equalTo(10)))
             .andExpect(jsonPath("$.data.externalPlaceId", equalTo("tokyo-tower")))
+            .andExpect(jsonPath("$.data.photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.openingSummary.source", equalTo("REGULAR")))
             .andExpect(jsonPath("$.data.adder").doesNotExist())
     }
 
@@ -82,8 +88,34 @@ class MemberWishlistControllerTest(
             .andExpect(jsonPath("$.data.content[0].memberWishlistItemId", equalTo(1)))
             .andExpect(jsonPath("$.data.content[0].placeId", equalTo(10)))
             .andExpect(jsonPath("$.data.content[0].externalPlaceId", equalTo("tokyo-tower")))
+            .andExpect(jsonPath("$.data.content[0].photoHint.name", equalTo("places/tokyo-tower/photos/photo-1")))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.openNow", equalTo(false)))
+            .andExpect(jsonPath("$.data.content[0].openingSummary.source", equalTo("REGULAR")))
             .andExpect(jsonPath("$.data.content[0].adder").doesNotExist())
             .andExpect(jsonPath("$.data.totalElements", equalTo(1)))
+    }
+
+    @Test
+    fun `getWishlistItems delegates sort parameter`() {
+        `when`(memberWishlistService.getWishlist(PageRequest.of(0, 10, Sort.by("rating_desc")), "rating_desc"))
+            .thenReturn(samplePage())
+
+        mockMvc.perform(get("/api/v1/members/me/wishlists?page=0&size=10&sort=rating_desc"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.content[0].memberWishlistItemId", equalTo(1)))
+    }
+
+    @Test
+    fun `getWishlistItems delegates wishlistSort without pageable sort pollution`() {
+        `when`(memberWishlistService.getWishlist(PageRequest.of(0, 10), "rating_desc"))
+            .thenReturn(samplePage())
+
+        mockMvc.perform(get("/api/v1/members/me/wishlists?page=0&size=10&wishlistSort=rating_desc"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+
+        verify(memberWishlistService).getWishlist(PageRequest.of(0, 10), "rating_desc")
     }
 
     @Test
@@ -205,7 +237,16 @@ class MemberWishlistControllerTest(
         longitude = BigDecimal.TEN,
         placeTypeSummary = null,
         normalizedCategoryKey = null,
-        photoHint = null,
+        photoHint = MemberWishlistResult.PhotoHint("places/tokyo-tower/photos/photo-1", null),
         placeDetailSummary = null,
+        openingSummary = OpeningSummary(
+            openNow = false,
+            nextOpenTime = "2026-05-17T18:00:00+09:00",
+            nextCloseTime = null,
+            source = OpeningSummarySource.REGULAR,
+            timezoneOffsetMinutes = 540,
+            syncedAt = LocalDateTime.of(2026, 5, 17, 10, 0),
+            stale = false,
+        ),
     )
 }

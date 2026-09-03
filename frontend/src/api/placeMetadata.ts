@@ -35,3 +35,13 @@ export interface PlaceDetailSummary {
   userRatingCount?: number | null;
   editorialSummary?: string | null;
 }
+
+export interface OpeningSummary {
+  openNow?: boolean | null;
+  nextOpenTime?: string | null;
+  nextCloseTime?: string | null;
+  source?: "CURRENT" | "REGULAR" | "UNKNOWN" | string;
+  timezoneOffsetMinutes?: number | null;
+  syncedAt?: string | null;
+  stale?: boolean;
+}

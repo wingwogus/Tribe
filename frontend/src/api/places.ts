@@ -1,5 +1,11 @@
-import {authenticatedAxios} from './auth';
-import type { NormalizedPlaceCategoryKey, PlaceDetailSummary, PlacePhotoHint, PlaceTypeSummary } from "@/api/placeMetadata";
+import { authenticatedAxios, type ApiResponse } from "@/api/http";
+import type {
+  NormalizedPlaceCategoryKey,
+  OpeningSummary,
+  PlaceDetailSummary,
+  PlacePhotoHint,
+  PlaceTypeSummary,
+} from "@/api/placeMetadata";
 
 // Backend response types matching PlaceDto
 export interface PlaceSearchResult {
@@ -13,6 +19,7 @@ export interface PlaceSearchResult {
   normalizedCategoryKey?: NormalizedPlaceCategoryKey | null;
   photoHint?: PlacePhotoHint | null;
   placeDetailSummary?: PlaceDetailSummary | null;
+  openingSummary?: OpeningSummary | null;
 }
 
 export interface ResolvedPlaceResult extends PlaceSearchResult {
@@ -30,6 +37,7 @@ export interface PlaceDetailResponse {
   normalizedCategoryKey?: NormalizedPlaceCategoryKey | null;
   photoHint?: PlacePhotoHint | null;
   placeDetailSummary?: PlaceDetailSummary | null;
+  openingSummary?: OpeningSummary | null;
   formattedPhoneNumber?: string | null;
   internationalPhoneNumber?: string | null;
   websiteUri?: string | null;
@@ -72,13 +80,13 @@ export const placesApi = {
     regionContextKey?: string,
     language: string = 'ko'
   ): Promise<PlaceSearchResult[]> => {
-    const response = await authenticatedAxios.get<{ data: PlaceSearchResult[] }>(
+    const response = await authenticatedAxios.get<ApiResponse<PlaceSearchResult[]>>(
       '/places/search',
       { 
         params: { query, region, latitude, longitude, radiusMeters, regionContextKey, language } 
       }
     );
-    return response.data.data;
+    return response.data.data ?? [];
   },
 
   searchNearby: async (request: NearbyPlaceSearchRequest): Promise<PlaceSearchResult[]> => {
@@ -101,12 +109,12 @@ export const placesApi = {
   },
 
   getPlaceDetail: async (placeId: number, language: string = "ko"): Promise<PlaceDetailResponse> => {
-    const response = await authenticatedAxios.get<{ data: PlaceDetailResponse }>(
+    const response = await authenticatedAxios.get<ApiResponse<PlaceDetailResponse>>(
       `/places/${placeId}`,
       {
         params: { language },
       },
     );
-    return response.data.data;
+    return response.data.data as PlaceDetailResponse;
   },
 };

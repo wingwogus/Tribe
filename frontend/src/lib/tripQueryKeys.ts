@@ -4,6 +4,11 @@ export const tripQueryKeys = {
   trip: (tripId: string | number) => ["trip", normalizeTripId(tripId)] as const,
   itinerary: (tripId: string | number) => ["itinerary", normalizeTripId(tripId)] as const,
   directions: (tripId: string | number) => ["directions", normalizeTripId(tripId)] as const,
+  tripWishlist: (tripId: string | number, query = "", sort = "") =>
+    ["wishlist", normalizeTripId(tripId), "trip", query, sort] as const,
+  tripWishlistRoot: (tripId: string | number) => ["wishlist", normalizeTripId(tripId), "trip"] as const,
+  memberWishlist: (query = "", sort = "") => ["wishlist", "member", query, sort] as const,
+  memberWishlistRoot: () => ["wishlist", "member"] as const,
   wishlist: (tripId: string | number, query = "") =>
     ["wishlist", normalizeTripId(tripId), query] as const,
   wishlistRoot: (tripId: string | number) => ["wishlist", normalizeTripId(tripId)] as const,

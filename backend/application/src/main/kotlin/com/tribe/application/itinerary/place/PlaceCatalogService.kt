@@ -9,6 +9,7 @@ import com.tribe.domain.itinerary.place.PlaceDetailSnapshotRepository
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriod
 import com.tribe.domain.itinerary.place.PlaceRegularOpeningPeriodRepository
 import com.tribe.domain.itinerary.place.PlaceRepository
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -19,7 +20,7 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
- * 장소 canonical catalog use case.
+ * 저장된 장소 catalog use case.
  *
  * 외부 Google placeId를 내부 `Place`로 고정하고 상세 snapshot을 보강하는 경계.
  */
@@ -34,8 +35,10 @@ class PlaceCatalogService(
     private val placeSearchGateway: PlaceSearchGateway,
     private val transactionManager: PlatformTransactionManager,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun findExistingPlaces(results: List<PlaceSearchGateway.SearchHit>): Map<String, Place> {
-        // 외부 후보 목록에서 이미 저장된 canonical Place만 한 번에 조회.
+        // 외부 후보 목록에서 이미 저장된 Place만 한 번에 조회.
         if (results.isEmpty()) return emptyMap()
         return placeRepository.findByExternalPlaceIdIn(results.map { it.externalPlaceId }).associateBy { it.externalPlaceId }
     }
@@ -48,7 +51,7 @@ class PlaceCatalogService(
         longitude: BigDecimal,
         language: String = "ko",
     ): Place {
-        // 흐름: 기존 Place 조회 -> 없으면 새 canonical 저장 -> 상세 정보 보강.
+        // 흐름: 기존 Place 조회 -> 없으면 새 Place 저장 -> 상세 정보 보강.
         val place = placeRepository.findByExternalPlaceId(externalPlaceId)
             ?: createPlaceOrFindConcurrent(
                 externalPlaceId = externalPlaceId,
@@ -56,12 +59,19 @@ class PlaceCatalogService(
                 address = address,
                 latitude = latitude,
                 longitude = longitude,
+            ).let(::findManagedPlace)
+
+        return try {
+            enrichDetailsIfNeeded(place, language)
+        } catch (ex: BusinessException) {
+            if (ex.errorCode != ErrorCode.EXTERNAL_API_ERROR) throw ex
+            log.warn(
+                "Skipping Google place detail enrichment: externalPlaceId={}, placeId={}",
+                place.externalPlaceId,
+                place.id,
             )
-
-        // 저장 직후 또는 재사용 시점 모두 상세 동기화 누락 여부 확인.
-        enrichDetailsIfNeeded(place, language)
-
-        return place
+            place
+        }
     }
 
     fun getOrCreateFromExternalPlaceId(
@@ -89,19 +99,41 @@ class PlaceCatalogService(
         )
     }
 
-    fun mergeWithCanonical(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
+    fun mergeWithSavedPlaces(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
         // 검색 후보에 내부 placeId/detailSummary를 덧입혀 저장 여부를 응답에 반영.
         val existingMap = findExistingPlaces(results)
         return results.map { result -> placeResultAssembler.toSearchItem(result, existingMap[result.externalPlaceId]) }
     }
 
+    fun mergeNearbyWithSavedPlaces(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
+        // 주변 후보는 내부 placeId/type만 얇게 병합하고 상세/사진/영업시간 조립은 건너뛴다.
+        val existingMap = findExistingPlaces(results)
+        return results.map { result -> placeResultAssembler.toNearbySearchItem(result, existingMap[result.externalPlaceId]) }
+    }
+
     fun enrichDetailsIfNeeded(place: Place, language: String = "ko"): Place {
-        // detailsSyncedAt은 외부 상세 동기화 완료 여부의 단일 기준.
-        if (place.detailsSyncedAt != null) return place
-        // Google details 실패는 저장된 기본 장소 정보를 그대로 유지.
-        val details = placeSearchGateway.getPlaceDetails(place.externalPlaceId, language) ?: return place
-        applyDetails(place, details)
+        if (!needsDetailEnrichment(place)) return place
+        refreshDetails(place, language)
         return place
+    }
+
+    fun refreshDetailsById(placeId: Long, language: String = "ko"): Boolean {
+        val place = placeRepository.findById(placeId).orElse(null) ?: return false
+        return refreshDetails(place, language)
+    }
+
+    fun refreshDetails(place: Place, language: String = "ko"): Boolean {
+        val details = placeSearchGateway.getPlaceDetails(place.externalPlaceId, language) ?: return false
+        applyDetails(place, details)
+        return true
+    }
+
+    private fun needsDetailEnrichment(place: Place): Boolean {
+        val snapshot = place.detailSnapshot
+        return place.detailsSyncedAt == null ||
+            snapshot == null ||
+            snapshot.openingHoursSyncedAt == null ||
+            snapshot.currentOpeningHoursSyncedAt == null
     }
 
     private fun createPlaceOrFindConcurrent(
@@ -136,18 +168,26 @@ class PlaceCatalogService(
                 )
             } ?: throw DataIntegrityViolationException("Failed to save place")
         } catch (ex: DataIntegrityViolationException) {
-            // unique key 경합이면 이미 저장된 canonical Place 재조회.
+            // unique key 경합이면 이미 저장된 Place 재조회.
             placeRepository.findByExternalPlaceId(externalPlaceId) ?: throw ex
         }
 
+    private fun findManagedPlace(place: Place): Place =
+        if (place.id == 0L) {
+            place
+        } else {
+            placeRepository.getReferenceById(place.id)
+        }
+
     private fun applyDetails(place: Place, details: PlaceSearchGateway.DetailsPayload) {
+        val syncedAt = LocalDateTime.now()
         // Place 본문에는 분류/상태처럼 목록과 상세 양쪽에서 쓰는 요약 필드 반영.
         place.googlePrimaryType = details.primaryType
         place.googleTypesJson = details.types.takeIf { it.isNotEmpty() }?.let(objectMapper::writeValueAsString)
         place.businessStatus = details.businessStatus
         place.utcOffsetMinutes = details.utcOffsetMinutes
-        place.typeSummarySyncedAt = LocalDateTime.now()
-        place.detailsSyncedAt = LocalDateTime.now()
+        place.typeSummarySyncedAt = syncedAt
+        place.detailsSyncedAt = syncedAt
 
         // 상세 전용 정보는 별도 snapshot으로 분리해 Place 본문 비대화 방지.
         val snapshot = detailSnapshotRepository.findById(place.id).orElse(
@@ -162,10 +202,12 @@ class PlaceCatalogService(
         snapshot.priceLevel = details.priceLevel
         snapshot.regularOpeningHoursJson = details.regularOpeningHoursJson
         snapshot.currentOpeningHoursJson = details.currentOpeningHoursJson
+        snapshot.openingHoursSyncedAt = syncedAt
+        snapshot.currentOpeningHoursSyncedAt = syncedAt
         snapshot.primaryPhotoName = details.primaryPhotoName
         snapshot.editorialSummary = details.editorialSummary
-        snapshot.detailsSyncedAt = place.detailsSyncedAt
-        snapshot.updatedAt = LocalDateTime.now()
+        snapshot.detailsSyncedAt = syncedAt
+        snapshot.updatedAt = syncedAt
         place.detailSnapshot = detailSnapshotRepository.save(snapshot)
 
         // 영업시간 period는 Google 최신 상세 기준으로 전체 교체.

@@ -13,7 +13,7 @@ import java.util.Locale
 /**
  * 장소 검색 use case.
  *
- * 검색: 외부 후보 조회 + 캐시 + 저장된 canonical 장소 병합.
+ * 검색: 외부 후보 조회 + 캐시 + 저장된 장소 병합.
  * 저장: `/resolve` 또는 `PlaceCatalogService`를 통한 별도 확정.
  */
 @Service
@@ -45,7 +45,7 @@ class PlaceSearchService(
         radiusMeters: Int? = null,
         regionContextKey: String? = null,
     ): List<PlaceResult.SearchItem> {
-        // 흐름: 입력 정규화 -> 캐시 조회 -> Google searchText -> canonical 병합 순서 확정.
+        // 흐름: 입력 정규화 -> 캐시 조회 -> Google searchText -> 저장된 장소 병합 순서 확정.
         // 빈 검색어는 외부 호출 없이 빈 목록 처리.
         val normalizedQuery = query?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
         // Google regionCode는 2자리 국가 코드만 허용.
@@ -78,14 +78,14 @@ class PlaceSearchService(
 
         val cached = placeSearchCacheRepository.get(cacheKey)
         if (cached != null) {
-            // 캐시된 외부 후보도 최신 canonical 정보와 다시 병합해 placeId 최신성 확보.
-            return placeCatalogService.mergeWithCanonical(cached)
+            // 캐시된 외부 후보도 최신 저장 장소 정보와 다시 병합해 placeId 최신성 확보.
+            return placeCatalogService.mergeWithSavedPlaces(cached)
         }
 
         // 외부 검색 결과는 SearchHit 후보로만 캐시, 내부 저장은 별도 확정 흐름.
         val results = placeSearchGateway.search(normalizedQuery, language, context)
         placeSearchCacheRepository.put(cacheKey, results, SEARCH_CACHE_TTL)
-        return placeCatalogService.mergeWithCanonical(results)
+        return placeCatalogService.mergeWithSavedPlaces(results)
     }
 
     /**
@@ -269,9 +269,7 @@ class PlaceSearchService(
     }
 
     private fun toNearbySearchItems(results: List<PlaceSearchGateway.SearchHit>): List<PlaceResult.SearchItem> {
-        return placeCatalogService.mergeWithCanonical(results)
-            // 주변 목록 응답은 상세 요약 제거로 경량화.
-            .map { it.copy(photoHint = null, placeDetailSummary = null) }
+        return placeCatalogService.mergeNearbyWithSavedPlaces(results)
     }
 
     /**

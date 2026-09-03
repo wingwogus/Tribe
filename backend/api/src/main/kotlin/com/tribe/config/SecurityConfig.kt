@@ -68,7 +68,9 @@ class SecurityConfig(
             .cors {
                 it.configurationSource {
                     CorsConfiguration().apply {
-                        allowedOrigins = listOf(appUrl)
+                        allowedOrigins = listOf(
+                            appUrl
+                        )
                         allowedMethods = listOf("*")
                         allowedHeaders = listOf("*")
                         allowCredentials = true

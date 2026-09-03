@@ -17,7 +17,7 @@ object PlaceResult {
     /**
      * 검색 후보 result.
      *
-     * placeId가 있으면 이미 내부 canonical Place와 병합된 후보.
+     * placeId가 있으면 이미 저장된 내부 Place와 병합된 후보.
      */
     data class SearchItem(
         val placeId: Long? = null,
@@ -30,6 +30,7 @@ object PlaceResult {
         val normalizedCategoryKey: NormalizedPlaceCategoryKey? = null,
         val photoHint: PhotoHint? = null,
         val placeDetailSummary: PlaceDetailSummary? = null,
+        val openingSummary: OpeningSummary? = null,
     )
 
     /**

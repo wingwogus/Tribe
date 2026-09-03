@@ -1,6 +1,7 @@
 package com.tribe.api.itinerary.place
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.tribe.application.itinerary.place.OpeningSummary
 import com.tribe.application.itinerary.place.PlaceDetailSummary
 import com.tribe.application.itinerary.place.PlaceResult
 import com.tribe.application.itinerary.place.PlaceTypeSummary
@@ -63,6 +64,31 @@ object PlaceResponses {
     }
 
     /**
+     * 목록에서 쓰는 영업 상태 요약.
+     */
+    data class OpeningSummaryResponse(
+        val openNow: Boolean?,
+        val nextOpenTime: String?,
+        val nextCloseTime: String?,
+        val source: String,
+        val timezoneOffsetMinutes: Int?,
+        val syncedAt: java.time.LocalDateTime?,
+        val stale: Boolean,
+    ) {
+        companion object {
+            fun from(summary: OpeningSummary) = OpeningSummaryResponse(
+                openNow = summary.openNow,
+                nextOpenTime = summary.nextOpenTime,
+                nextCloseTime = summary.nextCloseTime,
+                source = summary.source.name,
+                timezoneOffsetMinutes = summary.timezoneOffsetMinutes,
+                syncedAt = summary.syncedAt,
+                stale = summary.stale,
+            )
+        }
+    }
+
+    /**
      * 검색/주변/resolve 공통 목록 응답.
      */
     data class SearchResponse(
@@ -78,6 +104,7 @@ object PlaceResponses {
         val photoHint: PhotoHintResponse? = null,
         @field:JsonInclude(JsonInclude.Include.NON_NULL)
         val placeDetailSummary: PlaceDetailSummaryResponse? = null,
+        val openingSummary: OpeningSummaryResponse? = null,
     ) {
         companion object {
             fun from(result: PlaceResult.SearchItem) = SearchResponse(
@@ -91,6 +118,7 @@ object PlaceResponses {
                 normalizedCategoryKey = result.normalizedCategoryKey?.name,
                 photoHint = result.photoHint?.let(PhotoHintResponse::from),
                 placeDetailSummary = result.placeDetailSummary?.let(PlaceDetailSummaryResponse::from),
+                openingSummary = result.openingSummary?.let(OpeningSummaryResponse::from),
             )
 
             // 주변 검색 목록은 빠른 렌더링을 위해 사진/상세 요약 제거.
@@ -98,6 +126,7 @@ object PlaceResponses {
                 result.copy(
                     photoHint = null,
                     placeDetailSummary = null,
+                    openingSummary = null,
                 ),
             )
         }

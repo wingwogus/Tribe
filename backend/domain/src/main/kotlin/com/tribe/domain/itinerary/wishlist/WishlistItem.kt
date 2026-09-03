@@ -8,9 +8,11 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Column
+import jakarta.persistence.Table
 
 /**
  * 위시리스트 도메인 상태 모델.
@@ -18,6 +20,14 @@ import jakarta.persistence.Column
  * 영속성 identity와 업무 규칙의 기준점.
  */
 @Entity
+@Table(
+    name = "wishlist_item",
+    indexes = [
+        Index(name = "idx_wishlist_item_trip_id", columnList = "trip_id"),
+        Index(name = "idx_wishlist_item_place_id", columnList = "place_id"),
+        Index(name = "idx_wishlist_item_adder_id", columnList = "adder_id"),
+    ],
+)
 class WishlistItem(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "trip_id", nullable = false)

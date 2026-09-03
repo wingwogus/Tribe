@@ -11,7 +11,7 @@ import org.springframework.data.repository.query.Param
  *
  * 도메인 조회 의도와 persistence query 이름 분리.
  */
-interface MemberWishlistItemRepository : JpaRepository<MemberWishlistItem, Long> {
+interface MemberWishlistItemRepository : JpaRepository<MemberWishlistItem, Long>, MemberWishlistItemRepositoryCustom {
     @Query(
         value = """
             select mwi from MemberWishlistItem mwi

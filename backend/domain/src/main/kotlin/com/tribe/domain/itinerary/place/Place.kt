@@ -12,11 +12,12 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.OneToMany
 import jakarta.persistence.OneToOne
+import org.hibernate.annotations.BatchSize
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
- * 내부 canonical 장소.
+ * 내부 저장 장소.
  *
  * Google externalPlaceId를 unique identity로 삼아 일정/위시/리뷰가 공유.
  */
@@ -65,6 +66,7 @@ class Place(
     var detailSnapshot: PlaceDetailSnapshot? = null
 
     // Google regularOpeningHours를 계산 가능한 period 목록으로 분리 저장.
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "place", fetch = FetchType.LAZY, cascade = [CascadeType.ALL], orphanRemoval = true)
     val regularOpeningPeriods: MutableList<PlaceRegularOpeningPeriod> = mutableListOf()
 }
