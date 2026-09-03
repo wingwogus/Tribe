@@ -7,7 +7,7 @@ import {placesApi, PlaceSearchResult} from "@/api/places";
 import {useToast} from "@/hooks/use-toast";
 import {buildPlaceSearchQuery, getCountryOptionByCode2, getTripRegionByCode, getTripRegionLabel} from "@/lib/tripRegions";
 import {readApiErrorMessage} from "@/api/http";
-import {PlacePreviewCard} from "@/components/trip-planner/PlacePreviewCard";
+import {PlacePreviewCard} from "@/components/place/PlacePreviewCard";
 
 interface PlaceSearchModalProps {
   isOpen: boolean;

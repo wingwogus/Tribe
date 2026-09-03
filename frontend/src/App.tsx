@@ -7,6 +7,7 @@ import TripPlanner from "./pages/TripPlanner";
 import Settlement from "./pages/Settlement";
 import Community from "./pages/Community";
 import CommunityPost from "./pages/CommunityPost";
+import MyWishlist from "./pages/MyWishlist";
 import UserProfile from "./pages/UserProfile";
 import NotFound from "./pages/NotFound";
 import Signup from "./pages/Signup";
@@ -27,6 +28,7 @@ const App = () => (
         <Route path="/settlement/:tripId" element={<Settlement />} />
         <Route path="/community" element={<Community />} />
         <Route path="/post/:postId" element={<CommunityPost />} />
+        <Route path="/my-wishlist" element={<MyWishlist />} />
         <Route path="/profile/:memberId" element={<UserProfile />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

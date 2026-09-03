@@ -3,7 +3,7 @@ import {ChevronDown, Globe2, Loader2, Plus, Search, Star, X} from "lucide-react"
 import type {MemberWishlistItem, TripWishlistSort, WishlistItem} from "@/api/wishlist";
 import {Button} from "@/components/ui/button";
 import {Card} from "@/components/ui/card";
-import {PlacePreviewCard} from "@/components/trip-planner/PlacePreviewCard";
+import {PlacePreviewCard} from "@/components/place/PlacePreviewCard";
 import {getPlaceTypeLabelFromKey} from "@/lib/placePresentation";
 import {cn} from "@/lib/utils";
 

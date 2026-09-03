@@ -171,6 +171,14 @@ export const wishlistApi = {
     return toWishlistItem(response.data.data as BackendWishlistItem);
   },
 
+  addMemberWishlist: async (request: WishlistAddRequest): Promise<MemberWishlistItem> => {
+    const response = await authenticatedAxios.post<ApiResponse<BackendMemberWishlistItem>>(
+      "/members/me/wishlists",
+      request,
+    );
+    return toMemberWishlistItem(response.data.data as BackendMemberWishlistItem);
+  },
+
   addTripWishlistFromMemberWishlist: async (
     tripId: number,
     memberWishlistItemId: number,

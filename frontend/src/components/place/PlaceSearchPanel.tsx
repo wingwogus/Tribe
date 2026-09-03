@@ -4,7 +4,8 @@ import {PlaceSearchResult} from "@/api/places";
 import {Button} from "@/components/ui/button";
 import {Card} from "@/components/ui/card";
 import {Input} from "@/components/ui/input";
-import {PlacePreviewCard} from "@/components/trip-planner/PlacePreviewCard";
+import {PlacePreviewCard} from "@/components/place/PlacePreviewCard";
+import {cn} from "@/lib/utils";
 
 interface PlaceSearchPanelProps {
   query: string;
@@ -13,10 +14,13 @@ interface PlaceSearchPanelProps {
   onSearchSubmit: () => void;
   results: PlaceSearchResult[];
   onAddPlace: (place: PlaceSearchResult) => void;
+  onSelectPlace?: (place: PlaceSearchResult) => void;
   onClose: () => void;
   isLoading?: boolean;
   addingExternalPlaceId?: string | null;
   errorMessage?: string | null;
+  selectedExternalPlaceId?: string | null;
+  className?: string;
 }
 
 export const PlaceSearchPanel = ({
@@ -26,10 +30,13 @@ export const PlaceSearchPanel = ({
   onSearchSubmit,
   results,
   onAddPlace,
+  onSelectPlace,
   onClose,
   isLoading = false,
   addingExternalPlaceId = null,
   errorMessage = null,
+  selectedExternalPlaceId = null,
+  className,
 }: PlaceSearchPanelProps) => {
   const hasQuery = query.trim().length > 0;
   const hasSubmittedQuery = submittedQuery.trim().length > 0;
@@ -41,7 +48,10 @@ export const PlaceSearchPanel = ({
   };
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+    <Card className={cn(
+      "flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur",
+      className,
+    )}>
       <div className="flex-shrink-0 border-b border-gray-100 bg-white p-5 pb-4">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-tight text-slate-900">장소 검색</h2>
@@ -83,6 +93,10 @@ export const PlaceSearchPanel = ({
             {results.map((place) => (
               <PlacePreviewCard
                 key={place.externalPlaceId}
+                onSelect={onSelectPlace ? () => onSelectPlace(place) : undefined}
+                className={place.externalPlaceId === selectedExternalPlaceId
+                  ? "border-primary/40 ring-2 ring-primary/30 shadow-lg"
+                  : undefined}
                 place={{
                   title: place.placeName,
                   address: place.address,

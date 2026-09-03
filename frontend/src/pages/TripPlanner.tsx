@@ -92,7 +92,7 @@ import {TripMembersModal} from "@/components/TripMembersModal";
 import {ItineraryMap, ItineraryMapHandle, type GooglePoiSelection} from "@/components/ItineraryMap";
 import {PlaceDetailPanel, type PlaceDetailPanelPlace} from "@/components/PlaceDetailPanel";
 import {TripChatModal} from "@/components/TripChatModal";
-import {PlaceSearchPanel} from "@/components/trip-planner/PlaceSearchPanel";
+import {PlaceSearchPanel} from "@/components/place/PlaceSearchPanel";
 import {WishlistPanel, type WishlistPanelItem, type WishlistSource} from "@/components/trip-planner/WishlistPanel";
 import {tripApi} from "@/api/trips";
 import {
